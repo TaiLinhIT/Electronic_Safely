@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<SystemSetting xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <configName>SystemSetting.xml</configName>
+  <!-- May hipot GW Instek GPT-9800 series. Doi ComPortGPT thanh cong COM that (vd COM2). -->
+  <ComPortGPT>COM2</ComPortGPT>
+  <ComBaudrateGPT>115200</ComBaudrateGPT>
+  <ComStopBitGPT>1</ComStopBitGPT>
+  <ComParityGPT>None</ComParityGPT>
+  <ComDataBitGPT>8</ComDataBitGPT>
+  <!-- Tu dieu khien Arduino. AUTO = phan mem tu do co ng tra loi "OK PONG". -->
+  <ComPortControl>AUTO</ComPortControl>
+  <ComBaudrateControl>115200</ComBaudrateControl>
+  <ComStopBitControl>1</ComStopBitControl>
+  <ComParityControl>None</ComParityControl>
+  <ComDataBitControl>8</ComDataBitControl>
+</SystemSetting>

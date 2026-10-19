@@ -1,0 +1,16 @@
+Model name
+program
+Voltage test (kV)
+0.5
+Frequency test (Hz)
+50
+Time test (S)
+2.0
+Ramup test (S)
+0.1
+Reference test (mA)
+0.0
+High set (mA)
+20.0
+Low set (mA)
+0.0
