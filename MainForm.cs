@@ -215,7 +215,7 @@ public partial class MainForm : Form
     #region Bước 2 - Kiểm tra kết nối GPT-9801 + Control Board
 
     /// <summary>Bước 2 - dò và kết nối cả hai thiết bị, đăng ký sự kiện, nạp chương trình.</summary>
-    private async Task RunStartupChecksAsync(bool showRetryDialog = true)
+    private async Task RunStartupChecksAsync()
     {
         SetProcessStep(ProcessStep.CheckingFixture);
         AddLog("[Bước 2] Đang kiểm tra kết nối GPT-9801 và Control Board...");
@@ -235,15 +235,6 @@ public partial class MainForm : Form
             AddLog("[LỖI] Chưa kết nối đủ thiết bị - kiểm tra dây nối, driver và cổng COM.");
             AddLog("       HIPOT dùng Config\\SystemSetting.xml [ComPortGPT], Control Board dùng [ComPortControl].");
             SetStatus("NO DEV", ColorError, "Không kết nối đủ thiết bị. Kiểm tra kết nối rồi chạy lại.");
-            if (!showRetryDialog) return;
-            DialogResult r = MessageBox.Show(
-                "Chưa kết nối được:\n" +
-                $"{(_hipotOk ? "[OK]  " : "[FAIL]")} HIPOT (GPT-9801)\n" +
-                $"{(_cbOk ? "[OK]  " : "[FAIL]")} Control Board\n\n" +
-                "Bấm Yes để dò lại, No để tiếp tục ở chế độ chờ\n" +
-                "(dùng nút \"Kết nối lại\" sau khi đã sửa cổng COM ở tab Setting).",
-                "Kết nối thiết bị", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-            if (r == DialogResult.Yes) await RunStartupChecksAsync();
             return;
         }
 
@@ -273,7 +264,7 @@ public partial class MainForm : Form
             return;
         }
         SaveSettings();
-        await RunStartupChecksAsync(showRetryDialog: false);
+        await RunStartupChecksAsync();
         if (_hipotOk && _cbOk)
             AddLog("[KẾT NỐI] Dò lại thành công cả hai thiết bị.");
         else
