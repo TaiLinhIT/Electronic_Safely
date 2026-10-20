@@ -226,6 +226,12 @@ public sealed class HipotLink : IDisposable
     }
 
     /// <summary>Bắt đầu phép thử trên máy.</summary>
+    /// <remarks>
+    /// Phải KIỂM TRA nội dung trả lời, không chỉ "có dòng nào đó":
+    ///   - GPT-9800 báo "INTERLOCK OPEN" (DB-9 pin1-2 chưa short) -> máy KHÔNG phóng áp,
+    ///     nếu bỏ qua lỗi này PC sẽ tin rằng test đang chạy rồi timeout vô ích.
+    ///   - "TEST OFF" = máy từ chối bật (đang lỗi / chưa sẵn sàng).
+    /// </remarks>
     public bool StartTest(out string error)
     {
         error = "";
@@ -234,6 +240,19 @@ public sealed class HipotLink : IDisposable
         Thread.Sleep(50);
         Reply r = Query("FUNC:TEST ON;:FUNC:TEST?", 2000);
         if (!r.Ok) { error = $"FUNC:TEST không phản hồi: {r.Raw}"; return false; }
+
+        string up = r.Raw.ToUpperInvariant();
+        if (up.Contains("INTERLOCK"))
+        {
+            error = "GPT-9800 báo INTERLOCK OPEN - tiếp điểm INTERLOCK1(1)-INTERLOCK2(2) trên " +
+                    "DB-9 SIGNAL I/O chưa bị short (kiểm tra dây từ D13 board / chìa interlock).";
+            return false;
+        }
+        if (up.Contains("TEST OFF"))
+        {
+            error = $"Máy KHÔNG bật phát áp: {r.Raw}";
+            return false;
+        }
         return true;
     }
 

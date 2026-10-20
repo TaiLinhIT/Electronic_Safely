@@ -386,7 +386,10 @@ public partial class MainForm : Form
             if (st.Ok) AddLog($"[CB] Trạng thái: {st.Text}");
 
             // Nhận diện chế độ fixture tự động từ STATUS? (firmware v1.2.0 có "FIX=..").
-            _fixtureMode = (st.Ok && st.Text.Contains("FIX=")) ||
+            // v1.3.0: STATUS? trả FIXTURE=/LOCK= (bản cũ là FIX=). Chấp nhận cả 3 để
+            // phần mềm tự nhận diện chế độ fixture dù nâng cấp firmware từ bản cũ.
+            _fixtureMode = (st.Ok && (st.Text.Contains("FIXTURE=") || st.Text.Contains("FIX="))) ||
+                           (_arduino.Firmware?.Contains("FW=1.3") == true) ||
                            (_arduino.Firmware?.Contains("FW=1.2") == true);
             AddLog(_fixtureMode
                 ? "[CB] [OK] CHẾ ĐỘ FIXTURE TỰ ĐỘNG: START → xilanh đóng → pogo pin chạm unit → " +
@@ -397,8 +400,14 @@ public partial class MainForm : Form
             {
                 // Chế độ fixture không cần tick checkbox "unit đã vào" (board tự điều phối
                 // toàn bộ chu trình) -> mở sẵn nút START để operator bấm được ngay.
-                _btnStartTest.Enabled = _hipotOk;
-                if (!_hipotOk)
+                // LƯU Ý: ConnectControlBoard chạy trong Task.Run (RunStartupChecksAsync)
+                // nên PHẢI marshal về UI thread - truy cập thẳng Control sẽ ném
+                // InvalidOperationException "Cross-thread operation not valid".
+                bool enableStart = _hipotOk;
+                void applyStart() => _btnStartTest.Enabled = enableStart;
+                if (_btnStartTest.InvokeRequired) _btnStartTest.BeginInvoke((Action)applyStart);
+                else applyStart();
+                if (!enableStart)
                     AddLog("[CB] [WARN] Chưa kết nối GPT-9801 - nút START tạm khóa, kết nối hipot để bật.");
             }
             SetLinkState(_valCb, $"{found} OK", ColorOk);
@@ -555,14 +564,17 @@ public partial class MainForm : Form
 
     private static string DescribeFixState(string s) => s.ToUpperInvariant() switch
     {
-        "CLOSING" => "ĐANG ĐÓNG XUỐNG (pogo pin đang tiến vào unit)",
-        "TESTING" => "ĐÃ ĐÓNG HẾT - đang phát áp",
-        "OPENING" => "ĐANG ĐẨY LÊN (pogo pin đang thu về)",
-        "PASS"    => "PASS - xilanh đã rút",
-        "FAIL"    => "FAIL - xilanh đã rút",
-        "ABORTED" => "ĐÃ DỪNG KHẨN - xilanh đã rút",
-        "FAULT"   => "LỖI CƠ KHÍ - xilanh đứng yên, KHÔNG thử tiếp",
-        "IDLE"    => "Ở TRÊN - sẵn sàng nhận unit",
+        "CLOSING"  => "FIXTURE ĐANG ĐÓNG (clamp đang khép lại)",
+        "POGO_OUT" => "POGO PIN ĐANG ĐẨY RA (tiếp cận unit)",
+        "ARMED"    => "ĐÃ KHÓA LIÊN ĐỘNG GPT-9800 - chờ PC cho phép phóng áp",
+        "TESTING"  => "RELAY HV ĐÃ NGẮN - GPT-9800 đang phóng áp vào unit",
+        "POGO_BACK" => "POGO PIN ĐANG RÚT VỀ",
+        "FIX_OPEN" => "FIXTURE ĐANG MỞ RA",
+        "PASS"     => "PASS - fixture đã mở",
+        "FAIL"     => "FAIL - fixture đã mở",
+        "ABORTED"  => "ĐÃ DỪNG KHẨN - fixture đang mở",
+        "FAULT"    => "LỖI CƠ KHÍ - mọi van đã tắt, KHÔNG thử tiếp",
+        "IDLE"     => "SẴN SÀNG - fixture mở, chờ unit kế",
         _ => s
     };
 
@@ -623,9 +635,25 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Bước 5 - thực hiện phép thử THẬT trên GPT-9801.
-    /// Sequence: FUNC:TEST ON -> chờ máy chạy xong -> MEAS? -> đọc kết quả thật.
+    /// Bước 4.5 - KHÓA LIÊN ĐỘNG (chỉ chạy khi firmware v1.3.0 ở chế độ fixture).
+    ///
+    /// Board đã short tiếp điểm INTERLOCK1(1) - INTERLOCK2(2) trên DB-9 SIGNAL I/O của
+    /// GPT-9800 ngay khi fixture đóng + pogo chạm unit (*TESTON# / EVT HV_ARMED). Lệnh
+    /// "HV ARM" là PHẦN XÁC NHẬN CỦA PC: chỉ khi PC gửi thì board mới đóng relay D4 -
+    /// bước cuối cùng mở đường phóng điện. Như vậy 2 điều kiện phải ĐÚNG cùng lúc:
+    ///   (1) cơ khí đã kín (board tự quyết)  và  (2) PC cho phép (đây).
+    /// Không có lệnh SCPI interlock trên GPT-9800 nên PC không thể làm phần này thay board.
     /// </summary>
+    private bool ArmHighVoltage()
+    {
+        ArduinoLink.Reply r = _arduino.SendCommand("HV ARM", 1500);
+        if (r.Ok)
+            AddLog($"[Bước 5] Khóa liên động đã xác nhận - relay HV: {r.Text}");
+        else
+            AddLog($"[LỖI] Board KHÔNG cho phép phóng áp: {r.Raw}");
+        return r.Ok;
+    }
+
     /// <summary>
     /// Bước 4/5 - bắt đầu phép thử. <paramref name="fromBoard"/> = true khi tới từ
     /// nút START vật lý (*TESTON#) - khi đó board ĐÃ TỰ kiểm interlock + unit rồi nên
@@ -638,6 +666,13 @@ public partial class MainForm : Form
         if (!_hipotOk || !_hipot.IsOpen)
         {
             AddLog("[Bước 4] Không thể bắt đầu: chưa kết nối GPT-9801.");
+            // Board có thể vừa vào ST_ARMED (nhận *TESTON#) - nhả ngay, KHÔNG để fixture
+            // nằm kín + liên động khóa trong lúc dialog hiển thị và chờ ARM_WAIT_MS.
+            if (_arduino.IsOpen)
+            {
+                ArduinoLink.Reply ab = _arduino.SendCommand("TEST ABORT", 800);
+                if (ab.Ok) AddLog($"[CB] Đã nhả fixture do thiếu hipot: {ab.Text}");
+            }
             DialogResult dr = MessageBox.Show(
                 "Chưa kết nối GPT-9801. Kiểm tra cáp RS-232 và cổng COM.\n\n" +
                 "Bấm Yes để dò lại kết nối ngay?",
@@ -703,6 +738,17 @@ public partial class MainForm : Form
                     await Task.Delay(1200);
                     return;
                 }
+            }
+
+            // Giai đoạn khóa liên động: board đang ở ST_ARMED (fixture kín + pogo chạm +
+            // DB-9 pin1-2 short) -> HV ARM mới đóng relay D4 cho GPT-9800 phóng áp.
+            if (_fixtureMode && _arduino.IsOpen && !ArmHighVoltage())
+            {
+                SetStatus("FAIL", ColorFail, "Board từ chối mở đường phóng áp - kiểm tra liên động.");
+                if (_hipot.IsOpen) _hipot.StopTest(out _);
+                try { _arduino.SendCommand("TEST ABORT", 800); } catch { }
+                await Task.Delay(1200);
+                return;
             }
 
             if (!_hipot.IsOpen) throw new InvalidOperationException("Mất kết nối GPT-9801.");
@@ -864,7 +910,7 @@ public partial class MainForm : Form
         //   - và BẮT ĐẦU rút xilanh (solUpOn)
         // RESET gửi ngay sau đó sẽ gọi solBothOff() + lampsOff() -> dừng xilanh
         // giữa chừng và tắt luôn đèn vừa bật, khi operator còn chưa thấy kết quả.
-        // Board tự về ST_IDLE sau khi rút xilanh xong (OPENING_MS).
+        // Board tự về ST_IDLE sau khi rút pogo (POGO_BACK_MS) rồi mở fixture (FIX_OPEN_MS).
         await Task.Delay(300);
         _chkUnitReady.Checked = false;
         _chkUnitReady.Enabled = _cbOk || _hipotOk;
@@ -877,7 +923,7 @@ public partial class MainForm : Form
             // Chờ board rút xilanh xong (STATE=IDLE) thay vì bật ngay: tránh để operator
             // bấm giữa chừng và nhận "ERR FIX_NOT_IDLE".
             bool idleNow = false;
-            for (int i = 0; i < 40; i++)              // tối đa ~4 s (rút mất 1 s + biên độ)
+            for (int i = 0; i < 80; i++)              // tối đa ~8 s (POGO_BACK 1,2 s + FIX_OPEN 2,5 s + dự phòng)
             {
                 await Task.Delay(100);
                 ArduinoLink.Reply fx = _arduino.SendCommand("FIX STATUS", 250);
