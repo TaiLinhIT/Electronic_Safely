@@ -36,6 +36,11 @@ public partial class MainForm : Form
     private bool _hipotOk;
     private bool _cbOk;
 
+    /// <summary>Nguồn dữ liệu cho 2 biểu đồ kết quả (TestStats + 2 control ở ResultCharts.cs).</summary>
+    private readonly TestStats _stats = new();
+    private readonly TrendBarChart _chartTrend = new();
+    private readonly YieldPieChart _chartPie = new();
+
     /// <summary>
     /// true = board đang chạy firmware v1.2.0+ ở chế độ FIXTURE tự động (xilanh khí nén).
     /// Detect bằng dấu hiệu "FIX=" trong phản hồi STATUS?.
@@ -78,6 +83,7 @@ public partial class MainForm : Form
 
         StyleHeader();
         BuildGrid();
+        BuildCharts();
         StyleLog();
         StyleStatus();
 
@@ -161,6 +167,35 @@ public partial class MainForm : Form
         };
         foreach (string c in cols) _grid.Columns.Add(c, c);
         _gridPanel.Controls.Add(_grid);
+    }
+
+    /// <summary>
+    /// Dựng 2 biểu đồ kết quả ở hàng 3 của tab Home (giống màn hình TEST của app cũ):
+    ///   - TrendBarChart : cột mA đo được từng phép thử + đường ngưỡng Hi set
+    ///   - YieldPieChart : vòng tròn FPY - % PASS của ca hiện tại
+    /// Controls tự vẽ (ResultCharts.cs) - không cần thư viện ngoài.
+    /// </summary>
+    private void BuildCharts()
+    {
+        _chartTrend.Dock = DockStyle.Fill;
+        _chartPie.Dock = DockStyle.Fill;
+        _chartsLayout.Controls.Add(_chartTrend, 0, 0);
+        _chartsLayout.Controls.Add(_chartPie, 1, 0);
+        RefreshCharts();
+    }
+
+    /// <summary>Vẽ lại 2 biểu đồ (an toàn gọi từ thread bất kỳ).</summary>
+    private void RefreshCharts()
+    {
+        void apply()
+        {
+            _chartTrend.SetData(_stats.Points, _program.HighSetMa);
+            _chartPie.SetData(_stats.Pass, _stats.Fail, _stats.FpyPercent());
+        }
+        if (_chartTrend.InvokeRequired || _chartPie.InvokeRequired)
+            _chartTrend.BeginInvoke((Action)apply);
+        else
+            apply();
     }
 
     private void StyleLog()
@@ -436,8 +471,12 @@ public partial class MainForm : Form
 
         var st = _report.LoadPassrate(_program.Name, DateTime.Now);
         _total = st.Total; _pass = st.Pass; _fail = st.Fail;
+        // Biểu đồ: nạp lại đếm pass/fail của ca + các phép thử gần nhất từ báo cáo CSV,
+        // để mở app giữa ca vẫn thấy tiếp xu hướng chứ không bắt đầu từ trắng.
+        _stats.Load(st.Pass, st.Fail, _report.ReadRecentResults(_program.Name, DateTime.Now));
         UpdateStats(0);
         FillGridLimits();
+        RefreshCharts();
     }
 
     #endregion
@@ -510,8 +549,8 @@ public partial class MainForm : Form
 
             if (_fixtureMode)
             {
-                // Chế độ fixture: INTERLOCK? trả "BYPASS" (đã tắt), poll trạng thái xilanh
-                // để operator thấy rõ xilanh đang Ở TRÊN / ĐANG XUỐNG / ĐANG LÊN.
+                // Chế độ fixture: board tự quyết an toàn (D8 "cho phép đo" + D13), nên PC chỉ
+                // poll trạng thái xilanh để operator thấy rõ đang Ở TRÊN / ĐANG XUỐNG / ĐANG LÊN.
                 ArduinoLink.Reply fx = _arduino.SendCommand("FIX STATUS", 300);
                 if (!fx.Ok) return;
                 string s = ArduinoLink.GetField(fx.Text, "STATE");
@@ -836,6 +875,10 @@ public partial class MainForm : Form
         double cycleSeconds = _cycleWatch.Elapsed.TotalSeconds;
         _total++;
         if (pass) _pass++; else _fail++;
+
+        // Biểu đồ cột + tròn FPY: thêm điểm mới ngay sau khi có kết quả.
+        _stats.Add(_total, res.CurrentMa, res.Result, DateTime.Now);
+        RefreshCharts();
 
         UpdateStats(cycleSeconds);
 

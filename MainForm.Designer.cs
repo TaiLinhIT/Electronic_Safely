@@ -32,6 +32,9 @@ partial class MainForm
     private System.Windows.Forms.GroupBox _grpTestLog;
     private System.Windows.Forms.Label _lblTestLog;
     private System.Windows.Forms.Panel _logPanel;
+    private System.Windows.Forms.GroupBox _grpCharts;
+    private System.Windows.Forms.Label _lblCharts;
+    private System.Windows.Forms.TableLayoutPanel _chartsLayout;
     private System.Windows.Forms.GroupBox _grpTestResult;
     private System.Windows.Forms.Label _lblTestResult;
     private System.Windows.Forms.Label _status;
@@ -119,6 +122,9 @@ partial class MainForm
         this._grpTestLog = new System.Windows.Forms.GroupBox();
         this._lblTestLog = new System.Windows.Forms.Label();
         this._logPanel = new System.Windows.Forms.Panel();
+        this._grpCharts = new System.Windows.Forms.GroupBox();
+        this._lblCharts = new System.Windows.Forms.Label();
+        this._chartsLayout = new System.Windows.Forms.TableLayoutPanel();
         this._grpTestResult = new System.Windows.Forms.GroupBox();
         this._lblTestResult = new System.Windows.Forms.Label();
         this._status = new System.Windows.Forms.Label();
@@ -148,6 +154,8 @@ partial class MainForm
         this._grpTestItems.SuspendLayout();
         this._grpTestInfo.SuspendLayout();
         this._grpTestLog.SuspendLayout();
+        this._grpCharts.SuspendLayout();
+        this._chartsLayout.SuspendLayout();
         this._grpTestResult.SuspendLayout();
         this.SuspendLayout();
 
@@ -208,12 +216,16 @@ partial class MainForm
         this._homeLayout.Controls.Add(this._grpTestInfo, 1, 0);
         this._homeLayout.Controls.Add(this._grpTestLog, 0, 1);
         this._homeLayout.Controls.Add(this._grpTestResult, 1, 1);
+        // Hàng 3: 2 biểu đồ (cột xu hướng + tròn FPY) chiếm cả 2 cột
+        this._homeLayout.Controls.Add(this._grpCharts, 0, 2);
+        this._homeLayout.SetColumnSpan(this._grpCharts, 2);
         this._homeLayout.Dock = System.Windows.Forms.DockStyle.Fill;
         this._homeLayout.Location = new System.Drawing.Point(10, 10);
         this._homeLayout.Name = "_homeLayout";
-        this._homeLayout.RowCount = 2;
-        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 50F));
-        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 50F));
+        this._homeLayout.RowCount = 3;
+        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 40F));
+        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 40F));
+        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 20F));
         this._homeLayout.Size = new System.Drawing.Size(1422, 767);
 
         // _grpTestItems
@@ -496,6 +508,33 @@ partial class MainForm
         this._logPanel.Name = "_logPanel";
         this._logPanel.Size = new System.Drawing.Size(826, 330);
         this._logPanel.BorderStyle = System.Windows.Forms.BorderStyle.None;
+
+        // _grpCharts - hàng 3 của _homeLayout: 2 biểu đồ kết quả (cột + tròn FPY).
+        // Biểu đồ cột chiếm 60%, biểu đồ tròn chiếm 40% giống màn hình TEST của app cũ.
+        this._grpCharts.Controls.Add(this._lblCharts);
+        this._grpCharts.Controls.Add(this._chartsLayout);
+        this._grpCharts.Dock = System.Windows.Forms.DockStyle.Fill;
+        this._grpCharts.Location = new System.Drawing.Point(3, 777);
+        this._grpCharts.Name = "_grpCharts";
+        this._grpCharts.Size = new System.Drawing.Size(1416, 147);
+        this._grpCharts.Text = "";
+        this._grpCharts.Padding = new System.Windows.Forms.Padding(2);
+
+        // _lblCharts
+        this._lblCharts.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
+        this._lblCharts.Location = new System.Drawing.Point(10, 5);
+        this._lblCharts.Name = "_lblCharts";
+        this._lblCharts.Size = new System.Drawing.Size(340, 25);
+        this._lblCharts.Text = "RESULT CHARTS - xu hướng mA & FPY";
+
+        // _chartsLayout
+        this._chartsLayout.ColumnCount = 2;
+        this._chartsLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 60F));
+        this._chartsLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 40F));
+        this._chartsLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+        this._chartsLayout.Location = new System.Drawing.Point(5, 30);
+        this._chartsLayout.Name = "_chartsLayout";
+        this._chartsLayout.Size = new System.Drawing.Size(1406, 112);
 
         // _grpTestResult
         this._grpTestResult.Controls.Add(this._lblTestResult);

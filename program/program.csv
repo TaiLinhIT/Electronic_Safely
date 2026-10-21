@@ -5,12 +5,12 @@ Voltage test (kV)
 Frequency test (Hz)
 50
 Time test (S)
-2.0
+2
 Ramup test (S)
 0.1
 Reference test (mA)
-0.0
+0
 High set (mA)
-20.0
+20
 Low set (mA)
-0.0
+0

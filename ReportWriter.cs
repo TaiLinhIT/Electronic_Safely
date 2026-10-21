@@ -88,6 +88,39 @@ public sealed class ReportWriter
         catch { return (0, 0, 0); }
     }
 
+    /// <summary>
+    /// Đọc tối đa <paramref name="max"/> phép thử GẦN NHẤT của ca hiện tại từ
+    /// báo cáo CSV (cột No / Current result (mA) / Result) - dùng để seed biểu đồ
+    /// xu hướng lúc mở app, trình bày tiếp chứ không bắt đầu từ trắng.
+    /// Chỉ lấy dòng có Result = PASS/FAIL. Lỗi đọc -> trả về danh sách rỗng.
+    /// </summary>
+    public IReadOnlyList<TestResultPoint> ReadRecentResults(string programName, DateTime t,
+                                                            int max = TestStats.MaxPoints)
+    {
+        var list = new List<TestResultPoint>();
+        string path = Path.Combine(_reportDir, programName, $"{ShiftStamp(t)}Report.csv");
+        if (!File.Exists(path)) return list;
+        try
+        {
+            string[] lines = File.ReadAllLines(path);
+            foreach (string ln in lines)
+            {
+                if (string.IsNullOrWhiteSpace(ln) ||
+                    ln.StartsWith("No,", StringComparison.OrdinalIgnoreCase)) continue;
+                string[] cols = ln.Split(',');
+                if (cols.Length < 13) continue;
+                string result = cols[12].Trim().ToUpperInvariant();
+                if (result is not ("PASS" or "FAIL")) continue;
+                if (!int.TryParse(cols[0].Trim(), out int no)) continue;
+                double ma = double.TryParse(cols[10].Trim(), NumberStyles.Float,
+                                            CultureInfo.InvariantCulture, out double v) ? v : 0;
+                list.Add(new TestResultPoint(no, ma, result, t));
+            }
+        }
+        catch { /* báo cáo hỏng - biểu đồ trắng là được */ }
+        return list.Count <= max ? list : list.GetRange(list.Count - max, max);
+    }
+
     /// <summary>Ghi đè thống kê pass rate của ca hiện tại.</summary>
     public void SavePassrate(string programName, DateTime t, int total, int pass, int fail)
     {
