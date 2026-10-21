@@ -37,7 +37,6 @@ partial class MainForm
     private System.Windows.Forms.Label _status;
     private System.Windows.Forms.CheckBox _chkUnitReady;
     private System.Windows.Forms.Button _btnStartTest;
-    private System.Windows.Forms.Label _lblStepHint;
     // Controls của tab Setting (COM port HIPOT + Control Board) được dựng trong code,
     // xem MainForm.BuildSettingsTab(). Ở đây chỉ giữ lại TabPage.
 
@@ -125,7 +124,6 @@ partial class MainForm
         this._status = new System.Windows.Forms.Label();
         this._chkUnitReady = new System.Windows.Forms.CheckBox();
         this._btnStartTest = new System.Windows.Forms.Button();
-        this._lblStepHint = new System.Windows.Forms.Label();
         this._lblModel = new System.Windows.Forms.Label();
         this._valModel = new System.Windows.Forms.Label();
         this._lblProgram = new System.Windows.Forms.Label();
@@ -505,7 +503,6 @@ partial class MainForm
         this._grpTestResult.Controls.Add(this._chkUnitReady);
         this._grpTestResult.Controls.Add(this._btnStartTest);
         this._grpTestResult.Controls.Add(this._btnStop);
-        this._grpTestResult.Controls.Add(this._lblStepHint);
         this._grpTestResult.Dock = System.Windows.Forms.DockStyle.Fill;
         this._grpTestResult.Location = new System.Drawing.Point(855, 390);
         this._grpTestResult.Name = "_grpTestResult";
@@ -557,14 +554,6 @@ partial class MainForm
         this._btnStop.TabIndex = 6;
         this._btnStop.Text = "STOP";
         this._btnStop.UseVisualStyleBackColor = false;
-
-        // _lblStepHint (Bước 8 - Trạng thái/ bước hiện tại)
-        this._lblStepHint.Location = new System.Drawing.Point(275, 258);
-        this._lblStepHint.Name = "_lblStepHint";
-        this._lblStepHint.Size = new System.Drawing.Size(279, 90);
-        this._lblStepHint.TabIndex = 2;
-        this._lblStepHint.Text = "Bước 1/8 - Khởi động phần mềm";
-        this._lblStepHint.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
 
         // _tabSettings
         this._tabSettings.AutoScroll = true;

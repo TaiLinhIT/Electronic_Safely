@@ -8,20 +8,6 @@ namespace GPT9000_WinForms_TestSystem;
 
 public partial class MainForm : Form
 {
-    /// <summary>Các bước của quy trình test (theo flowchart 1 -> 8).</summary>
-    private enum ProcessStep
-    {
-        Booting,          // 1. Khởi động phần mềm
-        CheckingFixture,  // 2. Kiểm tra kết nối và trạng thái
-        UnitPlaced,       // 3. Đặt unit vào fixture
-        Ready,            // 4. Nhận START TEST
-        Testing,          // 5. GPT-9800 thực hiện phép thử
-        Pass,             // 6A. PASS
-        Fail,             // 6B. FAIL
-        Saving,           // 7. Lưu kết quả và hoàn tất 
-        WaitingNextUnit   // 8. Chờ unit tiếp theo
-    }
-
     private static readonly Color ColorIdle = Color.FromArgb(100, 116, 139);
     private static readonly Color ColorTesting = Color.FromArgb(37, 99, 235);
     private static readonly Color ColorPass = Color.ForestGreen;
@@ -124,7 +110,6 @@ public partial class MainForm : Form
 
         DisableSettings(true);
         LoadSettingsToFields();
-        SetProcessStep(ProcessStep.Booting);
 
         _clockTimer = new System.Windows.Forms.Timer { Interval = 1000 };
         _clockTimer.Tick += (_, _) =>
@@ -217,7 +202,6 @@ public partial class MainForm : Form
     /// <summary>Bước 2 - dò và kết nối cả hai thiết bị, đăng ký sự kiện, nạp chương trình.</summary>
     private async Task RunStartupChecksAsync()
     {
-        SetProcessStep(ProcessStep.CheckingFixture);
         AddLog("[Bước 2] Đang kiểm tra kết nối GPT-9801 và Control Board...");
         LogWorkingFolders();
 
@@ -238,7 +222,6 @@ public partial class MainForm : Form
             return;
         }
 
-        SetProcessStep(ProcessStep.WaitingNextUnit);
         SetStatus("IDLE", ColorIdle, "Fixture sẵn sàng. Đặt unit vào fixture để bắt đầu.");
         _chkUnitReady.Enabled = true;
         _btnStartTest.Enabled = false;
@@ -611,14 +594,12 @@ public partial class MainForm : Form
                 _chkUnitReady.Checked = false;
                 return;
             }
-            SetProcessStep(ProcessStep.Ready);
             AddLog("[Bước 3] Unit đã vào fixture, nắp an toàn đã đóng - sẵn sàng test.");
             SetStatus("READY", ColorTesting, "Fixture sẵn sàng. Nhấn START TEST hoặc nút trên bảng điều khiển.");
             _btnStartTest.Enabled = _hipotOk;
         }
         else
         {
-            SetProcessStep(ProcessStep.UnitPlaced);
             AddLog("[Bước 3] Unit được lấy ra khỏi fixture - chờ unit tiếp theo.");
             SetStatus("IDLE", ColorIdle, "Đặt unit vào fixture để bắt đầu.");
             _btnStartTest.Enabled = false;
@@ -710,7 +691,6 @@ public partial class MainForm : Form
         _status.Cursor = Cursors.Default;
         ClearGridResults();
         _cycleWatch.Restart();
-        SetProcessStep(ProcessStep.Testing);
         SetStatus("TESTING", ColorTesting, "GPT-9801 đang thực hiện phép thử...");
         AddLog($"[Bước 5] Bắt đầu phép thử: {_program}");
 
@@ -769,8 +749,6 @@ public partial class MainForm : Form
             FillGridResult(res);
 
             bool pass = res.IsPass && !res.IsError;
-            ProcessStep step = pass ? ProcessStep.Pass : ProcessStep.Fail;
-            SetProcessStep(step);
             SetStatus(pass ? "PASS" : "FAIL", pass ? ColorPass : ColorFail,
                       pass ? "Phép thử đạt." : $"Phép thử không đạt ({res.Result}).");
             AddLog(pass ? "[Bước 6A] PASS" : $"[Bước 6B] FAIL - {res.Result}");
@@ -784,7 +762,6 @@ public partial class MainForm : Form
             }
 
             // Bước 7 - lưu báo cáo và thống kê ca.
-            SetProcessStep(ProcessStep.Saving);
             SaveResult(res, pass);
         }
         catch (Exception ex)
@@ -932,7 +909,6 @@ public partial class MainForm : Form
                 AddLog("[Bước 8] Xilanh đã về vị trí trên - sẵn sàng nhận unit kế.");
         }
 
-        SetProcessStep(ProcessStep.WaitingNextUnit);
         SetStatus("IDLE", ColorIdle, _hipotOk
             ? (_fixtureMode
                 ? "Đặt unit mới vào fixture rồi bấm START để chu trình tự chạy."
@@ -1014,22 +990,6 @@ public partial class MainForm : Form
     #endregion
 
     #region Giao diện
-
-    private void SetProcessStep(ProcessStep step)
-    {
-        _lblStepHint.Text = step switch
-        {
-            ProcessStep.CheckingFixture => "Bước 2/8 - Kiểm tra kết nối GPT-9801,\r\ntrạng thái thiết bị và điều kiện an toàn",
-            ProcessStep.UnitPlaced      => "Bước 3/8 - Đặt unit vào fixture,\r\ndóng nắp an toàn và xác nhận",
-            ProcessStep.Ready           => "Bước 4/8 - Fixture sẵn sàng,\r\nchờ START TEST (nút bấm hoặc bàn phím F5)",
-            ProcessStep.Testing         => "Bước 5/8 - GPT-9801 đang thực hiện phép thử",
-            ProcessStep.Pass            => "Bước 6A - PASS",
-            ProcessStep.Fail            => "Bước 6B - FAIL",
-            ProcessStep.Saving          => "Bước 7/8 - Lưu báo cáo và thống kê ca",
-            ProcessStep.WaitingNextUnit => "Bước 8/8 - Chờ unit tiếp theo",
-            _                           => "Bước 1/8 - Khởi động phần mềm"
-        };
-    }
 
     private void SetStatus(string text, Color color, string? hint = null)
     {
