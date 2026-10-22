@@ -5,6 +5,7 @@ partial class MainForm
     private System.ComponentModel.IContainer components = null;
     private System.Windows.Forms.TabControl _tabs;
     private System.Windows.Forms.TabPage _tabHome;
+    private System.Windows.Forms.TabPage _tabCharts;
     private System.Windows.Forms.TabPage _tabSettings;
     private System.Windows.Forms.Panel _headerPanel;
     private System.Windows.Forms.Label _lblTitle;
@@ -95,6 +96,7 @@ partial class MainForm
         this.components = new System.ComponentModel.Container();
         this._tabs = new System.Windows.Forms.TabControl();
         this._tabHome = new System.Windows.Forms.TabPage();
+        this._tabCharts = new System.Windows.Forms.TabPage();
         this._tabSettings = new System.Windows.Forms.TabPage();
         this._headerPanel = new System.Windows.Forms.Panel();
         this._lblTitle = new System.Windows.Forms.Label();
@@ -148,6 +150,7 @@ partial class MainForm
 
         this._tabs.SuspendLayout();
         this._tabHome.SuspendLayout();
+        this._tabCharts.SuspendLayout();
         this._tabSettings.SuspendLayout();
         this._headerPanel.SuspendLayout();
         this._homeLayout.SuspendLayout();
@@ -192,6 +195,7 @@ partial class MainForm
         // _tabs
         this._tabs.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
         this._tabs.Controls.Add(this._tabHome);
+        this._tabs.Controls.Add(this._tabCharts);
         this._tabs.Controls.Add(this._tabSettings);
         this._tabs.Location = new System.Drawing.Point(0, 80);
         this._tabs.Name = "_tabs";
@@ -208,6 +212,14 @@ partial class MainForm
         this._tabHome.Size = new System.Drawing.Size(1442, 787);
         this._tabHome.Text = "Home";
 
+        // _tabCharts - tab riêng cho biểu đồ, luôn hiển thị đủ lớn.
+        this._tabCharts.Controls.Add(this._grpCharts);
+        this._tabCharts.Location = new System.Drawing.Point(4, 29);
+        this._tabCharts.Name = "_tabCharts";
+        this._tabCharts.Padding = new System.Windows.Forms.Padding(10);
+        this._tabCharts.Size = new System.Drawing.Size(1442, 787);
+        this._tabCharts.Text = "Biểu đồ";
+
         // _homeLayout
         this._homeLayout.ColumnCount = 2;
         this._homeLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 60F));
@@ -216,17 +228,15 @@ partial class MainForm
         this._homeLayout.Controls.Add(this._grpTestInfo, 1, 0);
         this._homeLayout.Controls.Add(this._grpTestLog, 0, 1);
         this._homeLayout.Controls.Add(this._grpTestResult, 1, 1);
-        // Hàng 3: 2 biểu đồ (cột xu hướng + tròn FPY) chiếm cả 2 cột
-        this._homeLayout.Controls.Add(this._grpCharts, 0, 2);
-        this._homeLayout.SetColumnSpan(this._grpCharts, 2);
-        this._homeLayout.Dock = System.Windows.Forms.DockStyle.Fill;
+        // Chiều cao tuyệt đối để các group giữ đủ nội dung; tab Home sẽ cuộn dọc
+        // khi cửa sổ thấp hơn 760 px (màn hình 720p).
+        this._homeLayout.Dock = System.Windows.Forms.DockStyle.Top;
         this._homeLayout.Location = new System.Drawing.Point(10, 10);
         this._homeLayout.Name = "_homeLayout";
-        this._homeLayout.RowCount = 3;
-        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 40F));
-        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 40F));
-        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 20F));
-        this._homeLayout.Size = new System.Drawing.Size(1422, 767);
+        this._homeLayout.RowCount = 2;
+        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 380F));
+        this._homeLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Absolute, 380F));
+        this._homeLayout.Size = new System.Drawing.Size(1422, 760);
 
         // _grpTestItems
         this._grpTestItems.Controls.Add(this._lblTestItems);
@@ -304,7 +314,7 @@ partial class MainForm
         this._valApplication.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valApplication.Location = new System.Drawing.Point(140, 40);
         this._valApplication.Name = "_valApplication";
-        this._valApplication.Size = new System.Drawing.Size(250, 25);
+        this._valApplication.Size = new System.Drawing.Size(220, 25);
         this._valApplication.Text = "System";
         this._valApplication.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
@@ -318,7 +328,7 @@ partial class MainForm
         this._valVersion.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valVersion.Location = new System.Drawing.Point(140, 70);
         this._valVersion.Name = "_valVersion";
-        this._valVersion.Size = new System.Drawing.Size(250, 25);
+        this._valVersion.Size = new System.Drawing.Size(220, 25);
         this._valVersion.Text = "1.0.0";
         this._valVersion.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
@@ -332,7 +342,7 @@ partial class MainForm
         this._valCycleTime.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valCycleTime.Location = new System.Drawing.Point(140, 100);
         this._valCycleTime.Name = "_valCycleTime";
-        this._valCycleTime.Size = new System.Drawing.Size(250, 25);
+        this._valCycleTime.Size = new System.Drawing.Size(220, 25);
         this._valCycleTime.Text = "0.00 s";
         this._valCycleTime.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
@@ -346,7 +356,7 @@ partial class MainForm
         this._valPass.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valPass.Location = new System.Drawing.Point(140, 140);
         this._valPass.Name = "_valPass";
-        this._valPass.Size = new System.Drawing.Size(250, 25);
+        this._valPass.Size = new System.Drawing.Size(220, 25);
         this._valPass.Text = "0";
         this._valPass.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
@@ -360,7 +370,7 @@ partial class MainForm
         this._valFail.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valFail.Location = new System.Drawing.Point(140, 170);
         this._valFail.Name = "_valFail";
-        this._valFail.Size = new System.Drawing.Size(250, 25);
+        this._valFail.Size = new System.Drawing.Size(220, 25);
         this._valFail.Text = "0";
         this._valFail.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
@@ -374,7 +384,7 @@ partial class MainForm
         this._valFpy.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valFpy.Location = new System.Drawing.Point(140, 200);
         this._valFpy.Name = "_valFpy";
-        this._valFpy.Size = new System.Drawing.Size(250, 25);
+        this._valFpy.Size = new System.Drawing.Size(220, 25);
         this._valFpy.Text = "0.00%";
         this._valFpy.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
@@ -388,7 +398,7 @@ partial class MainForm
         this._valTotal.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valTotal.Location = new System.Drawing.Point(140, 230);
         this._valTotal.Name = "_valTotal";
-        this._valTotal.Size = new System.Drawing.Size(250, 25);
+        this._valTotal.Size = new System.Drawing.Size(220, 25);
         this._valTotal.Text = "0";
         this._valTotal.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
@@ -400,7 +410,7 @@ partial class MainForm
         this._valModel.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valModel.Location = new System.Drawing.Point(140, 265);
         this._valModel.Name = "_valModel";
-        this._valModel.Size = new System.Drawing.Size(250, 25);
+        this._valModel.Size = new System.Drawing.Size(220, 25);
         this._valModel.Text = "-";
         this._valModel.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
@@ -411,36 +421,36 @@ partial class MainForm
         this._valProgram.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valProgram.Location = new System.Drawing.Point(140, 295);
         this._valProgram.Name = "_valProgram";
-        this._valProgram.Size = new System.Drawing.Size(250, 25);
+        this._valProgram.Size = new System.Drawing.Size(220, 25);
         this._valProgram.Text = "-";
         this._valProgram.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
         // Connection status
-        this._lblHipot.Location = new System.Drawing.Point(410, 40);
+        this._lblHipot.Location = new System.Drawing.Point(365, 40);
         this._lblHipot.Name = "_lblHipot";
         this._lblHipot.Size = new System.Drawing.Size(140, 22);
         this._lblHipot.Text = "HIPOT (GPT-9800):";
         this._valHipot.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valHipot.ForeColor = System.Drawing.Color.Gray;
-        this._valHipot.Location = new System.Drawing.Point(410, 62);
+        this._valHipot.Location = new System.Drawing.Point(365, 62);
         this._valHipot.Name = "_valHipot";
         this._valHipot.Size = new System.Drawing.Size(140, 22);
         this._valHipot.Text = "NOT CONNECTED";
 
-        this._lblCb.Location = new System.Drawing.Point(410, 95);
+        this._lblCb.Location = new System.Drawing.Point(365, 95);
         this._lblCb.Name = "_lblCb";
         this._lblCb.Size = new System.Drawing.Size(140, 22);
         this._lblCb.Text = "CONTROL BOARD:";
         this._valCb.Font = new System.Drawing.Font("Segoe UI", 9F, System.Drawing.FontStyle.Bold);
         this._valCb.ForeColor = System.Drawing.Color.Gray;
-        this._valCb.Location = new System.Drawing.Point(410, 117);
+        this._valCb.Location = new System.Drawing.Point(365, 117);
         this._valCb.Name = "_valCb";
         this._valCb.Size = new System.Drawing.Size(140, 22);
         this._valCb.Text = "NOT CONNECTED";
 
         this._lblClock.Font = new System.Drawing.Font("Segoe UI", 12F, System.Drawing.FontStyle.Bold);
         this._lblClock.ForeColor = System.Drawing.Color.FromArgb(30, 58, 95);
-        this._lblClock.Location = new System.Drawing.Point(410, 150);
+        this._lblClock.Location = new System.Drawing.Point(365, 150);
         this._lblClock.Name = "_lblClock";
         this._lblClock.Size = new System.Drawing.Size(145, 60);
         this._lblClock.Text = "0000/00/00\r\n00:00:00";
@@ -471,7 +481,7 @@ partial class MainForm
         this._btnLogin.UseVisualStyleBackColor = true;
 
         // _btnReconnect - dò lại HIPOT + Control Board (dùng khi đổi cổng COM ở tab Setting)
-        this._btnReconnect.Location = new System.Drawing.Point(410, 215);
+        this._btnReconnect.Location = new System.Drawing.Point(365, 215);
         this._btnReconnect.Name = "_btnReconnect";
         this._btnReconnect.Size = new System.Drawing.Size(145, 40);
         this._btnReconnect.TabIndex = 7;
@@ -479,7 +489,7 @@ partial class MainForm
         this._btnReconnect.UseVisualStyleBackColor = true;
 
         // _btnOpenLog - mở thư mục Log (cạnh file .exe) trong Explorer để lấy file log/báo cáo
-        this._btnOpenLog.Location = new System.Drawing.Point(410, 262);
+        this._btnOpenLog.Location = new System.Drawing.Point(365, 262);
         this._btnOpenLog.Name = "_btnOpenLog";
         this._btnOpenLog.Size = new System.Drawing.Size(145, 40);
         this._btnOpenLog.TabIndex = 8;
@@ -509,14 +519,14 @@ partial class MainForm
         this._logPanel.Size = new System.Drawing.Size(826, 330);
         this._logPanel.BorderStyle = System.Windows.Forms.BorderStyle.None;
 
-        // _grpCharts - hàng 3 của _homeLayout: 2 biểu đồ kết quả (cột + tròn FPY).
+        // _grpCharts - nội dung tab "Biểu đồ": 2 biểu đồ kết quả (cột + tròn FPY).
         // Biểu đồ cột chiếm 60%, biểu đồ tròn chiếm 40% giống màn hình TEST của app cũ.
         this._grpCharts.Controls.Add(this._lblCharts);
         this._grpCharts.Controls.Add(this._chartsLayout);
         this._grpCharts.Dock = System.Windows.Forms.DockStyle.Fill;
-        this._grpCharts.Location = new System.Drawing.Point(3, 777);
+        this._grpCharts.Location = new System.Drawing.Point(10, 10);
         this._grpCharts.Name = "_grpCharts";
-        this._grpCharts.Size = new System.Drawing.Size(1416, 147);
+        this._grpCharts.Size = new System.Drawing.Size(1422, 767);
         this._grpCharts.Text = "";
         this._grpCharts.Padding = new System.Windows.Forms.Padding(2);
 
@@ -525,12 +535,14 @@ partial class MainForm
         this._lblCharts.Location = new System.Drawing.Point(10, 5);
         this._lblCharts.Name = "_lblCharts";
         this._lblCharts.Size = new System.Drawing.Size(340, 25);
-        this._lblCharts.Text = "RESULT CHARTS - xu hướng mA & FPY";
+        this._lblCharts.Text = "RESULT CHARTS - TOTAL / PASS / FAIL (ca hiện tại)";
 
         // _chartsLayout
         this._chartsLayout.ColumnCount = 2;
         this._chartsLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 60F));
         this._chartsLayout.ColumnStyles.Add(new System.Windows.Forms.ColumnStyle(System.Windows.Forms.SizeType.Percent, 40F));
+        this._chartsLayout.RowCount = 1;
+        this._chartsLayout.RowStyles.Add(new System.Windows.Forms.RowStyle(System.Windows.Forms.SizeType.Percent, 100F));
         this._chartsLayout.Dock = System.Windows.Forms.DockStyle.Fill;
         this._chartsLayout.Location = new System.Drawing.Point(5, 30);
         this._chartsLayout.Name = "_chartsLayout";
@@ -609,6 +621,34 @@ partial class MainForm
         this.Name = "MainForm";
         this.Text = "GPT-9000 Safety Test System";
         this.Load += new System.EventHandler(this.MainForm_Load);
+
+        // ResumeLayout cho TẤT CẢ container đã SuspendLayout ở trên.
+        // Thiếu các lệnh này thì Dock=Fill không chạy, control giữ kích thước thiết kế
+        // và bị đẩy ra ngoài vùng nhìn.
+        this._grpTestResult.ResumeLayout(false);
+        this._grpTestResult.PerformLayout();
+        this._chartsLayout.ResumeLayout(false);
+        this._chartsLayout.PerformLayout();
+        this._grpCharts.ResumeLayout(false);
+        this._grpCharts.PerformLayout();
+        this._grpTestLog.ResumeLayout(false);
+        this._grpTestLog.PerformLayout();
+        this._grpTestInfo.ResumeLayout(false);
+        this._grpTestInfo.PerformLayout();
+        this._grpTestItems.ResumeLayout(false);
+        this._grpTestItems.PerformLayout();
+        this._homeLayout.ResumeLayout(false);
+        this._homeLayout.PerformLayout();
+        this._headerPanel.ResumeLayout(false);
+        this._headerPanel.PerformLayout();
+        this._tabSettings.ResumeLayout(false);
+        this._tabSettings.PerformLayout();
+        this._tabCharts.ResumeLayout(false);
+        this._tabCharts.PerformLayout();
+        this._tabHome.ResumeLayout(false);
+        this._tabHome.PerformLayout();
+        this._tabs.ResumeLayout(false);
+        this._tabs.PerformLayout();
         this.ResumeLayout(false);
         this.PerformLayout();
     }

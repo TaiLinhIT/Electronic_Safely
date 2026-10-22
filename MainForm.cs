@@ -38,7 +38,7 @@ public partial class MainForm : Form
 
     /// <summary>Nguồn dữ liệu cho 2 biểu đồ kết quả (TestStats + 2 control ở ResultCharts.cs).</summary>
     private readonly TestStats _stats = new();
-    private readonly TrendBarChart _chartTrend = new();
+    private readonly PassRateBarChart _chartPassRate = new();
     private readonly YieldPieChart _chartPie = new();
 
     /// <summary>
@@ -87,6 +87,10 @@ public partial class MainForm : Form
         StyleLog();
         StyleStatus();
 
+        // Cửa sổ hẹp (<= ~1320 px) chia 50/50 để khối TEST INFORMATION không bị cắt;
+        // cửa sổ rộng giữ 60/40 cho lưới TEST ITEMS rộng hơn.
+        Shown += (_, _) => ApplyHomeColumnSplit();
+
         // Nút bấm
         _btnStartTest.Font = new Font("Segoe UI", 11F, FontStyle.Bold);
         _btnStartTest.Enabled = false;
@@ -104,6 +108,12 @@ public partial class MainForm : Form
         _tabs.Selecting += (_, e) =>
         {
             if (e.TabPage != _tabSettings && _settingsUnlocked) SaveSettings(silent: true);
+        };
+
+        // Mở tab Biểu đồ thì vẽ lại ngay (dữ liệu có thể vừa thay đổi khi tab bị che).
+        _tabs.SelectedIndexChanged += (_, _) =>
+        {
+            if (_tabs.SelectedTab == _tabCharts) RefreshCharts();
         };
 
         // Bắt sự kiện từ hai thiết bị
@@ -170,16 +180,17 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Dựng 2 biểu đồ kết quả ở hàng 3 của tab Home (giống màn hình TEST của app cũ):
-    ///   - TrendBarChart : cột mA đo được từng phép thử + đường ngưỡng Hi set
-    ///   - YieldPieChart : vòng tròn FPY - % PASS của ca hiện tại
+    /// Dựng 2 biểu đồ kết quả trong tab "Biểu đồ" - giống hệt app cũ Hipot_GPT9801:
+    ///   - PassRateBarChart : cột TOTAL (xanh dương) / PASS (xanh lá) / FAIL (đỏ)
+    ///   - YieldPieChart    : vòng tròn PASS / FAIL kèm % và FPY của ca hiện tại
+    /// Dữ liệu đọc từ passrate của ca (model + ngày + Ngày/Đêm), cập nhật sau mỗi phép thử.
     /// Controls tự vẽ (ResultCharts.cs) - không cần thư viện ngoài.
     /// </summary>
     private void BuildCharts()
     {
-        _chartTrend.Dock = DockStyle.Fill;
+        _chartPassRate.Dock = DockStyle.Fill;
         _chartPie.Dock = DockStyle.Fill;
-        _chartsLayout.Controls.Add(_chartTrend, 0, 0);
+        _chartsLayout.Controls.Add(_chartPassRate, 0, 0);
         _chartsLayout.Controls.Add(_chartPie, 1, 0);
         RefreshCharts();
     }
@@ -189,11 +200,11 @@ public partial class MainForm : Form
     {
         void apply()
         {
-            _chartTrend.SetData(_stats.Points, _program.HighSetMa);
+            _chartPassRate.SetData(_stats.Total, _stats.Pass, _stats.Fail);
             _chartPie.SetData(_stats.Pass, _stats.Fail, _stats.FpyPercent());
         }
-        if (_chartTrend.InvokeRequired || _chartPie.InvokeRequired)
-            _chartTrend.BeginInvoke((Action)apply);
+        if (_chartPassRate.InvokeRequired || _chartPie.InvokeRequired)
+            _chartPassRate.BeginInvoke((Action)apply);
         else
             apply();
     }
@@ -224,6 +235,28 @@ public partial class MainForm : Form
 
     private async void MainForm_Load(object? sender, EventArgs e)
         => await RunStartupChecksAsync();
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        ApplyHomeColumnSplit();
+    }
+
+    /// <summary>
+    /// Chia lại 2 cột tab Home theo bề rộng cửa sổ: hẹp thì 50/50 để khối
+    /// TEST INFORMATION (cột phải) không bị cắt; rộng thì 60/40 như thiết kế.
+    /// </summary>
+    private void ApplyHomeColumnSplit()
+    {
+        if (_homeLayout is null || _homeLayout.ColumnStyles.Count < 2) return;
+
+        float left = _homeLayout.Width < 1320 ? 50F : 60F;
+        if (Math.Abs(_homeLayout.ColumnStyles[0].Width - left) < 0.1F) return;
+
+        _homeLayout.ColumnStyles[0].Width = left;
+        _homeLayout.ColumnStyles[1].Width = 100F - left;
+        _homeLayout.PerformLayout();
+    }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
@@ -471,9 +504,9 @@ public partial class MainForm : Form
 
         var st = _report.LoadPassrate(_program.Name, DateTime.Now);
         _total = st.Total; _pass = st.Pass; _fail = st.Fail;
-        // Biểu đồ: nạp lại đếm pass/fail của ca + các phép thử gần nhất từ báo cáo CSV,
-        // để mở app giữa ca vẫn thấy tiếp xu hướng chứ không bắt đầu từ trắng.
-        _stats.Load(st.Pass, st.Fail, _report.ReadRecentResults(_program.Name, DateTime.Now));
+        // Biểu đồ: nạp đếm TOTAL/PASS/FAIL của ca từ passrate (giống LoadPassRate +
+        // ShowPassrate của app cũ) để mở app giữa ca vẫn thấy đúng số liệu.
+        _stats.Load(st.Pass, st.Fail);
         UpdateStats(0);
         FillGridLimits();
         RefreshCharts();
@@ -876,7 +909,7 @@ public partial class MainForm : Form
         _total++;
         if (pass) _pass++; else _fail++;
 
-        // Biểu đồ cột + tròn FPY: thêm điểm mới ngay sau khi có kết quả.
+        // Biểu đồ TOTAL/PASS/FAIL + tròn PASS/FAIL: cập nhật ngay sau khi có kết quả.
         _stats.Add(_total, res.CurrentMa, res.Result, DateTime.Now);
         RefreshCharts();
 

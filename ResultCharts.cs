@@ -5,38 +5,39 @@ using System.Windows.Forms;
 namespace GPT9000_WinForms_TestSystem;
 
 /// <summary>
-/// BỂU ĐỒ CỘT XU HƯỚNG - mô phỏng biểu đồ cột bên trái màn hình TEST của chương trình
-/// Hipot_GPT9801: mỗi cột = 1 phép thử, chiều cao = dòng điện ĐO THẬT (mA).
-///   - Cột XANH LÁ  = PASS, cột ĐỎ = FAIL
-///   - Đường đứt vàng = ngưỡng HIGH SET của chương trình đang chạy
-///   - Trục dọc tự co giãn theo giá trị lớn nhất (giống trục 8/18/28/38/48 của app cũ)
+/// BIỂU ĐỒ CỘT TỶ LỆ ĐẠT - mô phỏng <c>chart1</c> của chương trình Hipot_GPT9801:
+///   - 3 cột TOTAL (xanh dương) / PASS (xanh lá) / FAIL (đỏ)
+///   - nhãn số lượng ngay trên đầu mỗi cột (giống series.Label = "#VALY")
+///   - dữ liệu lấy từ passrate của ca hiện tại (model + ngày + ca), cập nhật sau mỗi phép thử
 /// Vẽ tay bằng GDI+ ở sự kiện Paint -> không cần thư viện ngoài (tương thích .NET 8).
 /// </summary>
-public sealed class TrendBarChart : Control
+public sealed class PassRateBarChart : Control
 {
-    private IReadOnlyList<TestResultPoint> _data = Array.Empty<TestResultPoint>();
-    private double _highSetMa;
+    private int _total;
+    private int _pass;
+    private int _fail;
 
+    private static readonly Color TotalColor = Color.FromArgb(0, 102, 204);
     private static readonly Color PassColor = Color.FromArgb(34, 139, 34);
-    private static readonly Color FailColor = Color.FromArgb(178, 34, 34);
-    private static readonly Color HiColor = Color.FromArgb(217, 119, 6);
+    private static readonly Color FailColor = Color.FromArgb(200, 38, 38);
     private static readonly Color GridColor = Color.FromArgb(226, 232, 240);
     private static readonly Color AxisColor = Color.FromArgb(100, 116, 139);
 
-    public TrendBarChart()
+    public PassRateBarChart()
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                  ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         BackColor = Color.White;
-        Font = new Font("Segoe UI", 7.5F);
-        Padding = new Padding(38, 12, 8, 18);
+        Font = new Font("Segoe UI", 8F);
+        Padding = new Padding(42, 18, 10, 26);
     }
 
-    /// <summary>Dữ liệu nguồn (TestStats.Points) + ngưỡng High Set hiện hành.</summary>
-    public void SetData(IReadOnlyList<TestResultPoint> data, double highSetMa)
+    /// <summary>Cập nhật 3 cột TOTAL / PASS / FAIL của ca hiện tại.</summary>
+    public void SetData(int total, int pass, int fail)
     {
-        _data = data ?? Array.Empty<TestResultPoint>();
-        _highSetMa = highSetMa;
+        _total = Math.Max(0, total);
+        _pass = Math.Max(0, pass);
+        _fail = Math.Max(0, fail);
         Invalidate();
     }
 
@@ -51,95 +52,128 @@ public sealed class TrendBarChart : Control
             Math.Max(10, Width - Padding.Left - Padding.Right),
             Math.Max(10, Height - Padding.Top - Padding.Bottom));
 
-        // ---- scale dọc: tròn chẵn, phủ qua cả ngưỡng High Set ----
-        double maxData = Math.Max(_highSetMa, 0);
-        foreach (TestResultPoint p in _data) maxData = Math.Max(maxData, p.CurrentMa);
-        double vmax = Math.Max(1, maxData * 1.2);
-        double step = NiceStep(vmax / 5);
-        vmax = step * 5;
+        // ---- scale dọc: số nguyên, tối thiểu 0..5; chừa 10% đỉnh để nhãn nằm trên cột ----
+        int max = Math.Max(_total, Math.Max(_pass, _fail));
+        int roughTop = Math.Max(5, max);
+        int step = NiceStep(roughTop / 5.0);
+        int vmax = step * 5;
+        if (max > vmax * 0.9) vmax += step;   // thêm 1 khoảng cho nhãn #VALY
+        int ticks = vmax / step;
+
+        using Font axisFont = new("Consolas", 7.5F);
+        using var axisBrush = new SolidBrush(AxisColor);
+        using var gridPen = new Pen(GridColor);
 
         // ---- lưới ngang + nhãn trục Y ----
-        using Font axisFont = new("Consolas", 7.5F);
-        for (int i = 0; i <= 5; i++)
+        for (int i = 0; i <= ticks; i++)
         {
-            double v = step * (5 - i);
-            float y = plot.Top + plot.Height * i / 5f;
-            using var pen = new Pen(GridColor);
-            g.DrawLine(pen, plot.Left, y, plot.Right, y);
-            string lbl = v % 1 == 0 ? ((int)v).ToString() : v.ToString("0.0");
+            int value = step * (ticks - i);
+            float y = plot.Top + plot.Height * i / ticks;
+            g.DrawLine(gridPen, plot.Left, y, plot.Right, y);
+            string lbl = value.ToString();
             SizeF sz = g.MeasureString(lbl, axisFont);
-            using var brush = new SolidBrush(AxisColor);
-            g.DrawString(lbl, axisFont, brush, plot.Left - sz.Width - 3, y - sz.Height / 2);
+            g.DrawString(lbl, axisFont, axisBrush, plot.Left - sz.Width - 4, y - sz.Height / 2);
         }
 
-        if (_data.Count == 0)
-        {
-            using var gray = new SolidBrush(Color.FromArgb(203, 213, 225));
-            DrawCentered(g, "Chua co phap thu nao", plot, gray);
-            return;
-        }
+        // ---- 3 cột dữ liệu ----
+        string[] names = { "TOTAL", "PASS", "FAIL" };
+        int[] values = { _total, _pass, _fail };
+        Color[] colors = { TotalColor, PassColor, FailColor };
 
-        // ---- cột dữ liệu ----
-        float slot = plot.Width / Math.Max(1, _data.Count);
-        float barW = Math.Max(3, Math.Min(28f, slot * 0.72f));
-        using var passBrush = new SolidBrush(PassColor);
-        using var failBrush = new SolidBrush(FailColor);
-        for (int i = 0; i < _data.Count; i++)
+        float slot = plot.Width / 3f;
+        float barW = Math.Max(10, Math.Min(72f, slot * 0.52f));
+        using Font valueFont = new("Segoe UI", 9.5F, FontStyle.Bold);
+        using Font labelFont = new("Segoe UI", 8F, FontStyle.Bold);
+
+        for (int i = 0; i < 3; i++)
         {
-            TestResultPoint p = _data[i];
-            float h = (float)(p.CurrentMa / vmax * plot.Height);
-            h = Math.Clamp(h, 1.5f, plot.Height);
+            float h = (float)values[i] / vmax * plot.Height;
+            if (values[i] > 0) h = Math.Max(2f, h);
             float x = plot.Left + slot * i + (slot - barW) / 2;
             float y = plot.Bottom - h;
-            g.FillRectangle(p.IsPass() ? passBrush : failBrush, x, y, barW, h);
+
+            using (var brush = new SolidBrush(colors[i]))
+            {
+                using var path = RoundedBar(new RectangleF(x, y, barW, h), 4f);
+                g.FillPath(brush, path);
+            }
+
+            // Nhãn số lượng trên đầu cột - giống #VALY của chart cũ.
+            string valueText = values[i].ToString();
+            SizeF vs = g.MeasureString(valueText, valueFont);
+            float vy = y - vs.Height - 2;
+            using var valueBrush = new SolidBrush(colors[i]);
+            if (vy >= 0)
+            {
+                g.DrawString(valueText, valueFont, valueBrush,
+                    x + (barW - vs.Width) / 2, vy);
+            }
+            else
+            {
+                // Cột quá cao sát trần: đặt nhãn bên trong đầu cột, chữ trắng.
+                g.DrawString(valueText, valueFont, Brushes.White,
+                    x + (barW - vs.Width) / 2, Math.Min(plot.Bottom - vs.Height, y + 2));
+            }
+
+            // Nhãn trục X: TOTAL / PASS / FAIL
+            SizeF ns = g.MeasureString(names[i], labelFont);
+            g.DrawString(names[i], labelFont, valueBrush,
+                plot.Left + slot * i + (slot - ns.Width) / 2, plot.Bottom + 5);
         }
 
-        // ---- đường ngưỡng HIGH SET ----
-        if (_highSetMa > 0 && _highSetMa <= vmax)
-        {
-            float yHi = plot.Bottom - (float)(_highSetMa / vmax * plot.Height);
-            using var dash = new Pen(HiColor) { DashStyle = DashStyle.Dash, Width = 1.6f };
-            g.DrawLine(dash, plot.Left, yHi, plot.Right, yHi);
-            using var hiBrush = new SolidBrush(HiColor);
-            g.DrawString($"Hi set {_highSetMa:0.#} mA", axisFont, hiBrush, plot.Right - 84, yHi - 13);
-        }
-
-        // ---- trục đỚi + nhãn phép thử gần nhất ----
+        // ---- trục đáy ----
         using var axisPen = new Pen(AxisColor);
         g.DrawLine(axisPen, plot.Left, plot.Bottom, plot.Right, plot.Bottom);
-        using var dark = new SolidBrush(AxisColor);
-        DrawCentered(g, $"#{_data[^1].Index} - {_data[^1].CurrentMa:0.000} mA - {_data[^1].Result}",
-            new RectangleF(plot.Left, plot.Bottom, plot.Width, 16), dark);
     }
 
-    private static double NiceStep(double rough)
+    /// <summary>Chọn bước chia đẹp cho trục số nguyên: 1, 2, 5, 10, 20, 25, 50...</summary>
+    private static int NiceStep(double rough)
     {
-        double[] nice = { 0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5,
-                          1, 2, 5, 10, 20, 50, 100 };
-        foreach (double n in nice) if (n >= rough) return n;
-        return Math.Ceiling(rough);
+        int[] nice =
+        {
+            1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500,
+            1000, 2000, 2500, 5000, 10000, 20000, 50000
+        };
+        foreach (int n in nice) if (n >= rough) return n;
+        return (int)Math.Ceiling(rough);
     }
 
-    private static void DrawCentered(Graphics g, string text, RectangleF area, Brush brush)
+    /// <summary>Thanh chữ nhật bo nhẹ 2 góc trên; cột 0 vẫn vẽ được (chiều cao tối thiểu).</summary>
+    private static GraphicsPath RoundedBar(RectangleF r, float radius)
     {
-        using Font f = new("Segoe UI", 9F, FontStyle.Bold);
-        SizeF sz = g.MeasureString(text, f);
-        g.DrawString(text, f, brush, area.Left + (area.Width - sz.Width) / 2,
-                                  area.Top + (area.Height - sz.Height) / 2);
+        var path = new GraphicsPath();
+        float d = Math.Min(radius * 2, Math.Min(r.Width, r.Height));
+        if (d <= 0.1f)
+        {
+            path.AddRectangle(r);
+            return path;
+        }
+        path.AddArc(r.Left, r.Top, d, d, 180, 90);
+        path.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+        path.AddLine(r.Right, r.Top + d / 2, r.Right, r.Bottom);
+        path.AddLine(r.Right, r.Bottom, r.Left, r.Bottom);
+        path.AddLine(r.Left, r.Bottom, r.Left, r.Top + d / 2);
+        path.CloseFigure();
+        return path;
     }
 }
 
 /// <summary>
-/// BỂU ĐỒ TRÒN TỶ LỆ ĐẠT (FPY) - mô phỏng vòng tròn đổng bên phải màn hình TEST
-/// của chương trình Hipot_GPT9801: miếng XANH = PASS, ĐỎ = FAIL, giữa hiện % đạt.
+/// BIỂU ĐỒ TRÒN TỶ LỆ ĐẠT - mô phỏng <c>chart2</c> của Hipot_GPT9801:
+///   - miếng XANH LÁ = PASS, miếng ĐỎ = FAIL
+///   - nhãn % trên từng miếng (giống series.Label = "#PERCENT")
+///   - chú giải bên phải hiện số lượng + FPY của ca hiện tại
 /// </summary>
 public sealed class YieldPieChart : Control
 {
+    private int _pass;
+    private int _fail;
     private double _fpy;
-    private int _pass, _fail;
 
     private static readonly Color PassColor = Color.FromArgb(34, 139, 34);
-    private static readonly Color FailColor = Color.FromArgb(178, 34, 34);
+    private static readonly Color FailColor = Color.FromArgb(200, 38, 38);
+    private static readonly Color EmptyColor = Color.FromArgb(226, 232, 240);
+    private static readonly Color TextColor = Color.FromArgb(51, 65, 85);
 
     public YieldPieChart()
     {
@@ -147,16 +181,18 @@ public sealed class YieldPieChart : Control
                  ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         BackColor = Color.White;
         Font = new Font("Segoe UI", 8F);
-        Padding = new Padding(10, 10, 90, 10);   // chừa phải cho chú giải
+        Padding = new Padding(10, 8, 8, 8);
     }
 
     public void SetData(int pass, int fail, double fpyPercent)
     {
-        _pass = pass;
-        _fail = fail;
+        _pass = Math.Max(0, pass);
+        _fail = Math.Max(0, fail);
         _fpy = fpyPercent;
         Invalidate();
     }
+
+    private int Total => _pass + _fail;
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -166,49 +202,84 @@ public sealed class YieldPieChart : Control
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
         Padding p = Padding;
-        float size = Math.Min(Math.Max(20, Height - p.Top - p.Bottom),
-                              Math.Max(20, Width - p.Left - p.Right - 60));
-        RectangleF pie = new(p.Left, p.Top + ((Height - p.Top - p.Bottom) - size) / 2, size, size);
+        const float legendWidth = 118f;
+        float availableW = Width - p.Left - p.Right;
+        float size = Math.Min(Height - p.Top - p.Bottom,
+                              availableW - legendWidth - 16f);
+        size = Math.Max(40f, size);
 
-        float sweep = _total() == 0 ? 360f : (float)(_pass * 360.0 / _total());
-        using var failBrush = new SolidBrush(FailColor);
+        // Căn giữa cả cụm "bánh tròn + chú giải" trong cột 40% (tránh lệch trái).
+        float startX = p.Left + Math.Max(0, (availableW - (size + 16f + legendWidth)) / 2);
+        RectangleF pie = new(startX,
+            p.Top + ((Height - p.Top - p.Bottom) - size) / 2, size, size);
+
         using var passBrush = new SolidBrush(PassColor);
-        using var whitePen = new Pen(Color.White, 1.5f);
+        using var failBrush = new SolidBrush(FailColor);
+        using var whitePen = new Pen(Color.White, 2f);
 
-        // viền ngoài: FAIL, sau đó phủ PASS theo sweep, rồi khoét lỗ giữa cho FPY.
-        g.DrawPie(whitePen, pie, sweep - 90f, 360f - sweep);
-        g.FillPie(failBrush, pie, sweep - 90f, 360f - sweep);
-        g.FillPie(passBrush, pie, -90f, sweep);
-        g.FillEllipse(Brushes.White, pie.Left + size * 0.28f, pie.Top + size * 0.28f,
-                      size * 0.44f, size * 0.44f);
+        if (Total == 0)
+        {
+            // Chưa có phép thử: vòng xám + ghi chú.
+            using var empty = new SolidBrush(EmptyColor);
+            g.FillEllipse(empty, pie);
+            using var gray = new SolidBrush(Color.FromArgb(148, 163, 184));
+            DrawCentered(g, "Chưa có dữ liệu", pie, gray, 8F);
+        }
+        else
+        {
+            float passSweep = (float)(_pass * 360.0 / Total);
 
-        using Font big = new("Segoe UI", 13F, FontStyle.Bold);
-        using Font small = new("Segoe UI", 7.5F);
-        using var green = new SolidBrush(PassColor);
-        string pct = _total() == 0 ? "-" : $"{_fpy:0.0}%";
-        SizeF ps = g.MeasureString(pct, big);
-        g.DrawString(pct, big, green,
-            pie.Left + (size - ps.Width) / 2, pie.Top + (size - ps.Height) / 2 - 6);
-        string sub = _total() == 0 ? "Chua test" : $"{_pass}/{_total()} PASS";
-        SizeF ss = g.MeasureString(sub, small);
-        using var gray = new SolidBrush(Color.FromArgb(100, 116, 139));
-        g.DrawString(sub, small, gray,
-            pie.Left + (size - ss.Width) / 2, pie.Top + (size - ss.Height) / 2 + 12);
+            // Vẽ PASS trước, FAIL phủ phần còn lại - cùng thứ tự chart2 bản cũ.
+            if (_pass > 0) g.FillPie(passBrush, pie.X, pie.Y, pie.Width, pie.Height, -90f, passSweep);
+            if (_fail > 0)
+                g.FillPie(failBrush, pie.X, pie.Y, pie.Width, pie.Height,
+                          -90f + passSweep, 360f - passSweep);
+            g.DrawEllipse(whitePen, pie);
 
-        // ---- chú giải bên phải ----
+            // Nhãn % trên từng miếng (bỏ qua miếng quá nhỏ để chữ không đè nhau).
+            DrawSlicePercent(g, pie, _pass, Total, -90f, passSweep);
+            DrawSlicePercent(g, pie, _fail, Total, -90f + passSweep, 360f - passSweep);
+        }
+
+        // ---- chú giải: PASS / FAIL / FPY / TOTAL ----
         float lx = pie.Right + 16;
-        g.FillRectangle(passBrush, lx, pie.Top + 14, 12, 12);
-        g.DrawString($"PASS  {_pass}", small, Brushes.Black, lx + 16, pie.Top + 12);
-        g.FillRectangle(failBrush, lx, pie.Top + 44, 12, 12);
-        g.DrawString($"FAIL  {_fail}", small, Brushes.Black, lx + 16, pie.Top + 42);
+        float ly = pie.Top + Math.Max(0, (size - 96) / 2);
+        using var labelFont = new Font("Segoe UI", 8F);
+        using var boldFont = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+
+        g.FillRectangle(passBrush, lx, ly + 2, 12, 12);
+        g.DrawString($"PASS  {_pass}", boldFont, Brushes.Black, lx + 17, ly);
+        g.FillRectangle(failBrush, lx, ly + 28, 12, 12);
+        g.DrawString($"FAIL  {_fail}", boldFont, Brushes.Black, lx + 17, ly + 26);
+
+        using var textBrush = new SolidBrush(TextColor);
+        g.DrawString($"FPY   {_fpy:0.0}%", labelFont, textBrush, lx, ly + 56);
+        g.DrawString($"TOTAL {Total}", labelFont, textBrush, lx, ly + 76);
     }
 
-    private int _total() => _pass + _fail;
-}
+    private static void DrawSlicePercent(Graphics g, RectangleF pie, int value, int total,
+                                         float start, float sweep)
+    {
+        if (total <= 0 || value <= 0 || sweep < 24f) return;
 
-/// <summary>Extension nhỏ: coi chuỗi PASS (không phân biệt hoa thường) là đạt.</summary>
-internal static class TestResultExt
-{
-    public static bool IsPass(this TestResultPoint p)
-        => p.Result.Equals("PASS", StringComparison.OrdinalIgnoreCase);
+        double mid = (start + sweep / 2) * Math.PI / 180.0;
+        float cx = pie.Left + pie.Width / 2f + (float)(Math.Cos(mid) * pie.Width * 0.32);
+        float cy = pie.Top + pie.Height / 2f + (float)(Math.Sin(mid) * pie.Height * 0.32);
+        string text = $"{value * 100.0 / total:0.#}%";
+
+        using Font font = new("Segoe UI", 9F, FontStyle.Bold);
+        SizeF sz = g.MeasureString(text, font);
+        using var shadow = new SolidBrush(Color.FromArgb(90, 0, 0, 0));
+        using var white = new SolidBrush(Color.White);
+        g.DrawString(text, font, shadow, cx - sz.Width / 2 + 1, cy - sz.Height / 2 + 1);
+        g.DrawString(text, font, white, cx - sz.Width / 2, cy - sz.Height / 2);
+    }
+
+    private static void DrawCentered(Graphics g, string text, RectangleF area, Brush brush, float fontSize)
+    {
+        using Font f = new("Segoe UI", fontSize, FontStyle.Bold);
+        SizeF sz = g.MeasureString(text, f);
+        g.DrawString(text, f, brush, area.Left + (area.Width - sz.Width) / 2,
+                                  area.Top + (area.Height - sz.Height) / 2);
+    }
 }

@@ -7,8 +7,8 @@ namespace GPT9000_WinForms_TestSystem;
 public sealed record TestResultPoint(int Index, double CurrentMa, string Result, DateTime Time);
 
 /// <summary>
-/// Lịch sử kết quả phép thử trong phiên chạy app - NGUỒN DỮ LIỆU cho 2 biểu đồ
-/// (cột xu hướng + tròn FPY) giống màn hình TEST của chương trình Hipot_GPT9801.
+/// Thống kê kết quả phép thử trong ca chạy app - NGUỒN DỮ LIỆU cho 2 biểu đồ
+/// (cột TOTAL/PASS/FAIL + tròn PASS/FAIL) giống màn hình TEST của Hipot_GPT9801.
 ///
 /// Lớp này KHÔNG dính UI nên test được headlessly ở tools/apptest.
 /// </summary>
@@ -38,6 +38,13 @@ public sealed class TestStats
         while (_points.Count > MaxPoints)
             _points.RemoveAt(0);
     }
+
+    /// <summary>
+    /// Nạp lại đếm PASS/FAIL của ca đang chạy từ passrate (giống LoadPassRate của app cũ).
+    /// Dùng cho 2 biểu đồ TOTAL/PASS/FAIL + tròn PASS/FAIL.
+    /// </summary>
+    public void Load(int pass, int fail)
+        => Load(pass, fail, Array.Empty<TestResultPoint>());
 
     /// <summary>
     /// Nạp lại trạng thái từ ca đang chạy (khi mở app): đếm pass/fail từ passrate,

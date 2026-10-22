@@ -148,6 +148,14 @@ No,Name,V test(kV),Freq (Hz),Time test (S),Ramup test (S),Ref (mA),Hi set (mA),L
   Model/Program, trạng thái **HIPOT** và **CONTROL BOARD**, đồng hồ, PASS/FAIL/FPY/TOTAL,
   nút **Chọn CT** / **Sửa CT** / **Đăng nhập**, nút **Kết nối lại** và **Mở thư mục log**,
   log serial, ô TEST RESULT, checkbox fixture, nút **START TEST** và **STOP**.
+- **2 biểu đồ kết quả** ở hàng cuối tab Home (giống màn hình TEST của `Hipot_GPT9801`):
+  - **Biểu đồ cột** `TOTAL` (xanh dương) / `PASS` (xanh lá) / `FAIL` (đỏ), nhãn số lượng
+    trên đầu mỗi cột - tương đương `chart1` + series `PassRate1` của bản cũ.
+  - **Biểu đồ tròn** `PASS` / `FAIL` kèm % trên từng miếng, FPY và tổng số phép thử -
+    tương đương `chart2` + series `PassRate2` của bản cũ.
+  - Số liệu đọc từ `passrate\{ten CT}\{dd-MM-yyyy}_{Ngay|Dem}.csv` của **ca hiện tại**,
+    nạp lại khi mở app / đổi chương trình và cập nhật ngay sau mỗi phép thử.
+  - Vẽ bằng GDI+ (`ResultCharts.cs`), không cần thư viện biểu đồ ngoài.
 - **Tab Cài đặt**: cấu hình cổng serial của cả 2 thiết bị, chia làm 2 nhóm rõ ràng:
 
   | Nhóm | Các ô |
