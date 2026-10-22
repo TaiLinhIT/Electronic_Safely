@@ -283,3 +283,226 @@ public sealed class YieldPieChart : Control
                                   area.Top + (area.Height - sz.Height) / 2);
     }
 }
+
+/// <summary>
+/// BIỂU ĐỒ CỘT XU HƯỚNG DÒNG RÒ (mA) - mỗi cột = 1 phép thử của ca hiện tại:
+///   - cột XANH LÁ = PASS, cột ĐỎ = FAIL, ĐỎ TỐI = ERROR (vẫn tính FAIL)
+///   - nét đứt đỏ ngang = ngưỡng Hi set (mA) của chương trình đang chạy
+///   - nét đứt xanh = ngưỡng Low set &gt; 0 (nếu chương trình có đặt)
+///   - nhãn mA trên đầu cột FAIL/ERROR để nhìn ngay điểm lỗi
+///   - trục X hiển thị số thứ tự phép thử (cột No trong báo cáo CSV)
+/// Nguồn dữ liệu: <c>TestStats.Points</c> - tối đa <c>TestStats.MaxPoints</c> (60)
+/// phép thử GẦN NHẤT, nạp lại từ báo cáo CSV khi mở app giữa ca
+/// (<c>ReportWriter.ReadRecentResults</c>) nên biểu đồ không bắt đầu từ trắng.
+/// Vẽ tay bằng GDI+ ở sự kiện Paint - không cần thư viện ngoài (tương thích .NET 8).
+/// </summary>
+public sealed class CurrentTrendChart : Control
+{
+    private IReadOnlyList<TestResultPoint> _points = Array.Empty<TestResultPoint>();
+    private double _hiSetMa;
+    private double _lowSetMa;
+
+    private static readonly Color PassColor = Color.FromArgb(34, 139, 34);
+    private static readonly Color FailColor = Color.FromArgb(200, 38, 38);
+    private static readonly Color ErrorColor = Color.FromArgb(120, 20, 20);
+    private static readonly Color LowColor = Color.FromArgb(37, 99, 235);
+    private static readonly Color GridColor = Color.FromArgb(226, 232, 240);
+    private static readonly Color AxisColor = Color.FromArgb(100, 116, 139);
+    private static readonly Color EmptyColor = Color.FromArgb(148, 163, 184);
+
+    public CurrentTrendChart()
+    {
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
+                 ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        BackColor = Color.White;
+        Font = new Font("Segoe UI", 8F);
+        Padding = new Padding(52, 26, 14, 34);
+    }
+
+    /// <summary>Số cột hiện có (phép thử gần nhất) - dùng cho test headless.</summary>
+    public int PointCount => _points.Count;
+
+    /// <summary>Cập nhật dữ liệu: điểm xu hướng + ngưỡng Hi/Low set (mA) của chương trình.</summary>
+    public void SetData(IReadOnlyList<TestResultPoint>? points, double hiSetMa, double lowSetMa = 0)
+    {
+        _points = points ?? Array.Empty<TestResultPoint>();
+        _hiSetMa = Math.Max(0, hiSetMa);
+        _lowSetMa = Math.Max(0, lowSetMa);
+        Invalidate();
+    }
+
+    /// <summary>
+    /// Chọn scale trục Y (mA): 5 khoảng đều, làm tròn lên bước đẹp
+    /// (0.001, 0.002, 0.005, 0.01 ... 5, 10, 20, 25, 50) và luôn phủ hết
+    /// giá trị lớn nhất cũng như ngưỡng Hi set (để nét đứt luôn nằm trong lưới).
+    /// Nếu dữ liệu chạm &gt; 90% đỉnh thì thêm 1 khoảng cho nhãn số trên cột.
+    /// </summary>
+    public static (double VMax, double Step) ComputeScale(double maxValue, double hiLimit)
+    {
+        double max = Math.Max(Math.Max(0, maxValue), Math.Max(0, hiLimit));
+        if (max <= 0) max = 1;
+        double step = NiceStep(max / 5.0);
+        double vmax = step * 5;
+        if (max > vmax * 0.9) vmax += step;
+        return (vmax, step);
+    }
+
+    /// <summary>Bước chia đẹp cho trục mA (hỗ trợ cả giá trị nhỏ hơn 1).</summary>
+    private static double NiceStep(double rough)
+    {
+        double[] nice =
+        {
+            0.001, 0.002, 0.005, 0.01, 0.02, 0.05,
+            0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 25, 50, 100
+        };
+        foreach (double n in nice) if (n >= rough) return n;
+        return Math.Ceiling(rough);
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        Graphics g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
+
+        RectangleF plot = new(Padding.Left, Padding.Top,
+            Math.Max(10, Width - Padding.Left - Padding.Right),
+            Math.Max(10, Height - Padding.Top - Padding.Bottom));
+
+        // ---- chú giải nhỏ phía trên phải: PASS / FAIL / ngưỡng Hi ----
+        DrawLegend(g);
+
+        if (_points.Count == 0)
+        {
+            using var gray = new SolidBrush(EmptyColor);
+            using Font f = new("Segoe UI", 9F, FontStyle.Bold);
+            string msg = "Chưa có dữ liệu - biểu đồ tự nạp từ báo cáo của ca khi mở app";
+            SizeF sz = g.MeasureString(msg, f);
+            g.DrawString(msg, f, gray,
+                plot.Left + (plot.Width - sz.Width) / 2,
+                plot.Top + (plot.Height - sz.Height) / 2);
+            return;
+        }
+
+        // ---- scale dọc từ dữ liệu + ngưỡng Hi/Low ----
+        double maxData = _points.Max(p => p.CurrentMa);
+        var (vmax, step) = ComputeScale(maxData, Math.Max(_hiSetMa, _lowSetMa));
+        int ticks = (int)Math.Round(vmax / step);
+
+        using Font axisFont = new("Consolas", 7.5F);
+        using var axisBrush = new SolidBrush(AxisColor);
+        using var gridPen = new Pen(GridColor);
+
+        // ---- lưới ngang + nhãn trục Y (mA) ----
+        for (int i = 0; i <= ticks; i++)
+        {
+            double value = step * (ticks - i);
+            float y = plot.Top + plot.Height * i / ticks;
+            g.DrawLine(gridPen, plot.Left, y, plot.Right, y);
+            string lbl = value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+            SizeF sz = g.MeasureString(lbl, axisFont);
+            g.DrawString(lbl, axisFont, axisBrush, plot.Left - sz.Width - 4, y - sz.Height / 2);
+        }
+        g.DrawString("mA", axisFont, axisBrush, 4, plot.Top - 14);
+
+        // ---- 1 cột cho mỗi phép thử gần nhất ----
+        int n = _points.Count;
+        float slot = plot.Width / n;
+        float barW = Math.Max(1.5f, Math.Min(28f, slot * 0.68f));
+        using Font valueFont = new("Consolas", 6.5F, FontStyle.Bold);
+        using Font labelFont = new("Consolas", 7F);
+        int labelEvery = Math.Max(1, (int)Math.Ceiling(n / 12.0));
+
+        for (int i = 0; i < n; i++)
+        {
+            TestResultPoint p = _points[i];
+            float h = (float)(p.CurrentMa / vmax * plot.Height);
+            if (p.CurrentMa > 0) h = Math.Max(1.5f, h);
+            float x = plot.Left + slot * i + (slot - barW) / 2;
+            float y = plot.Bottom - h;
+
+            Color color = p.Result switch
+            {
+                "PASS" => PassColor,
+                "ERROR" => ErrorColor,
+                _ => FailColor
+            };
+            using (var brush = new SolidBrush(color))
+                g.FillRectangle(brush, x, y, barW, h);
+
+            // Nhãn mA trên đầu cột lỗi - nhìn ngay điểm dòng rò vượt ngưỡng.
+            if (p.Result is not ("PASS"))
+            {
+                string txt = p.CurrentMa.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+                SizeF vs = g.MeasureString(txt, valueFont);
+                if (vs.Width <= slot)
+                {
+                    using var vb = new SolidBrush(color);
+                    g.DrawString(txt, valueFont, vb, x + (barW - vs.Width) / 2,
+                        Math.Max(0, y - vs.Height - 1));
+                }
+            }
+
+            // Nhãn trục X: số thứ tự phép thử, giãn để không đè nhau.
+            if (i % labelEvery == 0)
+            {
+                string no = p.Index.ToString();
+                SizeF ns = g.MeasureString(no, labelFont);
+                g.DrawString(no, labelFont, axisBrush,
+                    plot.Left + slot * i + (slot - ns.Width) / 2, plot.Bottom + 4);
+            }
+        }
+
+        // ---- ngưỡng Low (nếu có) + ngưỡng Hi set: nét đứt ngang ----
+        using (var hiPen = new Pen(FailColor, 1.4f) { DashStyle = DashStyle.Dash })
+        {
+            float hy = (float)(_hiSetMa / vmax * plot.Height);
+            float yLine = plot.Bottom - hy;
+            g.DrawLine(hiPen, plot.Left, yLine, plot.Right, yLine);
+            string hiTxt = $"Hi {_hiSetMa:0.###} mA";
+            using var hiFont = new Font("Consolas", 7F, FontStyle.Bold);
+            SizeF hs = g.MeasureString(hiTxt, hiFont);
+            using var hiBrush = new SolidBrush(FailColor);
+            g.DrawString(hiTxt, hiFont, hiBrush,
+                plot.Right - hs.Width - 2, Math.Max(0, yLine - hs.Height - 2));
+        }
+        if (_lowSetMa > 0)
+        {
+            using var lowPen = new Pen(LowColor, 1.4f) { DashStyle = DashStyle.Dash };
+            float ly = plot.Bottom - (float)(_lowSetMa / vmax * plot.Height);
+            g.DrawLine(lowPen, plot.Left, ly, plot.Right, ly);
+            string lowTxt = $"Low {_lowSetMa:0.###} mA";
+            using var lowFont = new Font("Consolas", 7F);
+            SizeF ls = g.MeasureString(lowTxt, lowFont);
+            using var lowBrush = new SolidBrush(LowColor);
+            g.DrawString(lowTxt, lowFont, lowBrush, plot.Right - ls.Width - 2, ly + 2);
+        }
+
+        // ---- trục đáy + nhãn trục X ----
+        using var axisPen = new Pen(AxisColor);
+        g.DrawLine(axisPen, plot.Left, plot.Bottom, plot.Right, plot.Bottom);
+        g.DrawString("Số thứ tự phép thử (No)", labelFont, axisBrush,
+            plot.Left + (plot.Width - 110) / 2, plot.Bottom + 18);
+    }
+
+    /// <summary>Chú giải nhỏ phía trên: ô xanh PASS, ô đỏ FAIL, nét đứt Hi set.</summary>
+    private void DrawLegend(Graphics g)
+    {
+        using Font f = new("Segoe UI", 7.5F);
+        using var text = new SolidBrush(AxisColor);
+        float x = Width - Padding.Right - 210;
+        float y = 5;
+        if (x < 4) return;
+
+        using (var b = new SolidBrush(PassColor)) g.FillRectangle(b, x, y + 2, 10, 10);
+        g.DrawString("PASS", f, text, x + 13, y);
+        using (var b = new SolidBrush(FailColor)) g.FillRectangle(b, x + 47, y + 2, 10, 10);
+        g.DrawString("FAIL", f, text, x + 60, y);
+        using (var b = new SolidBrush(ErrorColor)) g.FillRectangle(b, x + 94, y + 2, 10, 10);
+        g.DrawString("ERROR", f, text, x + 107, y);
+        using var pen = new Pen(FailColor, 1.4f) { DashStyle = DashStyle.Dash };
+        g.DrawLine(pen, x + 155, y + 7, x + 175, y + 7);
+        g.DrawString("Hi set", f, text, x + 178, y);
+    }
+}
