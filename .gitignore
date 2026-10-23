@@ -9,3 +9,7 @@ obj/
 # User-specific files
 *.user
 *.suo
+
+# Vendor provisioning material is embedded at build time, never loaded from customer files.
+Licensing/Provisioning/*.txt
+Licensing/Provisioning/*.json

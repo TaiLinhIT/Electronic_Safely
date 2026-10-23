@@ -1,5 +1,14 @@
 # GPT-9000 Safety Test System (WinForms + .NET 8)
 
+## Cập nhật cài đặt và office.dat (23/10/2026)
+
+- `123456`: mở các ô cài đặt. `root123456`: mở các ô cài đặt và hiện đường dẫn/nút mở thư mục `office.dat`.
+- Lưu thành công, khóa lại hoặc rời tab Cài đặt sẽ khóa các ô và ẩn phần `office.dat`.
+- File nằm tại `C:\Program Files\offices\office.dat`; nút mở thư mục cũng trỏ đến đây.
+- App vẫn mở khi thiếu/hết hạn/sai license. Bấm Test sẽ không chạy và không hiện thông báo license.
+- Thay `office.dat` hợp lệ để gia hạn; lần bấm Test tiếp theo đọc lại file, không cần khởi động lại.
+- Chi tiết build, khóa nhúng và kiểm thử: [Licensing/README.md](Licensing/README.md).
+
 Phần mềm vận hành trạm test an toàn điện với **máy hipot GW Instek GPT-9801 thật**
 (kết nối RS-232 / SCPI) và **bảng điều khiển Arduino thật** (giao thức serial ASCII).
 
@@ -168,9 +177,8 @@ No,Name,V test(kV),Freq (Hz),Time test (S),Ramup test (S),Ref (mA),Hi set (mA),L
   (lưu rồi dò/ghép nối lại cả hai thiết bị ngay) và **Mở thư mục cấu hình**,
   kèm dòng hiển thị đường dẫn file cấu hình đang dùng.
 
-  Cuối cùng là nhóm **Bảo mật**: nhập `SettingsPassword` (`123456` mặc định)
-  rồi bấm **Mở khóa** để sửa các ô trên; **Khóa lại** để chốt. Nếu đã đăng nhập
-  admin thì các ô mở sẵn từ đầu.
+  Nhóm **Bảo mật**: nhập `123456` rồi bấm **Mở khóa** để sửa cài đặt;
+  `root123456` còn hiện phần `office.dat`. Lưu thành công sẽ khóa lại và ẩn phần này.
 
   Sau khi lưu, chỉ cần **khởi động lại phần mềm** là giá trị được đọc từ
   `Config\SystemSetting.xml`; còn **START** dùng luôn các cổng đã ghép nối
@@ -210,7 +218,7 @@ dotnet run --project tools\cbtest\cbtest.csproj -- -p COM6 -cmd "MEAS?"
 
 | Hạng mục | Giá trị |
 |---|---|
-| Settings password (`config.ini`) | `123456` |
+| Mật khẩu cài đặt / root | `123456` / `root123456` |
 | Admin password (`Config\pw.org`) | `admin` |
 | HIPOT | `COM2` @ 115200 8N1 (sửa trong tab **Cài đặt**) |
 | Control Board | `AUTO` @ 115200 8N1 (tự dò; sẽ hiện đúng cổng đã ghim) |

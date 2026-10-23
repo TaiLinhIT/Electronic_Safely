@@ -10,6 +10,12 @@
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <EmbeddedResource Include="Licensing\Provisioning\product-id.txt" Condition="Exists('Licensing\Provisioning\product-id.txt')" LogicalName="Licensing.product-id.txt" />
+    <EmbeddedResource Include="Licensing\Provisioning\office-secret.txt" Condition="Exists('Licensing\Provisioning\office-secret.txt')" LogicalName="Licensing.office-secret.txt" />
+    <EmbeddedResource Include="Licensing\Provisioning\public-keys.json" Condition="Exists('Licensing\Provisioning\public-keys.json')" LogicalName="Licensing.public-keys.json" />
+  </ItemGroup>
+  <ItemGroup>
     <None Update="config.ini">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -33,4 +39,8 @@
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
     </EmbeddedResource>
   </ItemGroup>
+  <Target Name="RequireReleaseLicenseProvisioning" BeforeTargets="BeforeBuild" Condition="'$(Configuration)' == 'Release'">
+    <Error Condition="!Exists('Licensing\Provisioning\product-id.txt') Or !Exists('Licensing\Provisioning\office-secret.txt') Or !Exists('Licensing\Provisioning\public-keys.json')"
+           Text="Restore Licensing/Provisioning/product-id.txt, office-secret.txt and public-keys.json before building Release. See Licensing/README.md." />
+  </Target>
 </Project>

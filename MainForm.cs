@@ -48,7 +48,10 @@ public partial class MainForm : Form
     /// *TESTON# → PC mới phát áp. Không còn kiểm nắp an toàn / cảm biến unit ở PC.
     /// </summary>
     private bool _fixtureMode;
-    private bool _settingsUnlocked;
+    private readonly SettingsAccess _settingsAccess = new();
+    private readonly OfficeLicenseService _license = new();
+    private bool _licenseAllowsTest;
+    private readonly GroupBox _grpOfficeLicense = new();
     private bool _logFileWarningShown;
     private int _pass, _fail, _total;
     private bool _lastInterlock = true;
@@ -102,7 +105,11 @@ public partial class MainForm : Form
         // Rời tab Cài đặt thì tự ghi lại file cấu hình (chỉ khi đang mở khóa)
         _tabs.Selecting += (_, e) =>
         {
-            if (e.TabPage != _tabSettings && _settingsUnlocked) SaveSettings(silent: true);
+            if (e.TabPage != _tabSettings && _settingsAccess.Unlocked)
+            {
+                SaveSettings(silent: true);
+                LockSettings();
+            }
         };
 
         // Bắt sự kiện từ hai thiết bị
@@ -262,6 +269,7 @@ public partial class MainForm : Form
     /// <summary>Bước 2 - dò và kết nối cả hai thiết bị, đăng ký sự kiện, nạp chương trình.</summary>
     private async Task RunStartupChecksAsync()
     {
+        _licenseAllowsTest = _license.CanStartTest();
         AddLog("[Bước 2] Đang kiểm tra kết nối GPT-9801 và Control Board...");
 
         LoadActiveProgram();
@@ -494,11 +502,11 @@ public partial class MainForm : Form
 
         if (line.Contains("*TESTON#"))
         {
-            AddLog("[CB] Nhận START từ nút bấm trên bảng điều khiển.");
             StartTest(fromBoard: true);
         }
         else if (line.Contains("*CANCEL#"))
         {
+            if (!_running && !_licenseAllowsTest) return;
             AddLog("[CB] Nhận ABORT từ bảng điều khiển / nắp an toàn bị mở.");
             RequestStop(fromBoard: true);
         }
@@ -508,6 +516,7 @@ public partial class MainForm : Form
     {
         if (IsDisposed) return;
         if (InvokeRequired) { BeginInvoke(new Action(() => OnBoardEvent(evt))); return; }
+        if (!_running && !_licenseAllowsTest) return;
         AddLog($"[CB] {evt}");
         if (evt.Contains("INTERLOCK_OPEN", StringComparison.OrdinalIgnoreCase) ||
             evt.Contains("UNIT_LOST", StringComparison.OrdinalIgnoreCase) ||
@@ -555,6 +564,7 @@ public partial class MainForm : Form
                 string s = ArduinoLink.GetField(fx.Text, "STATE");
                 if (s.Equals(_lastFixState, StringComparison.OrdinalIgnoreCase)) return;
                 _lastFixState = s;
+                if (!_licenseAllowsTest) return;
                 AddLog($"[Bước 3] Xilanh: {DescribeFixState(s)}");
                 return;
             }
@@ -648,6 +658,16 @@ public partial class MainForm : Form
     private async void StartTest(bool fromBoard = false)
     {
         if (_running) return;
+        _licenseAllowsTest = _license.CanStartTest();
+        if (!_licenseAllowsTest)
+        {
+            // A physical START may already have closed the fixture. Release it without
+            // arming HV, changing results, displaying a dialog or recording a failed test.
+            if (fromBoard && _arduino.IsOpen)
+                _arduino.SendCommand("TEST ABORT", 800);
+            return;
+        }
+        if (fromBoard) AddLog("[CB] Nhận START từ nút bấm trên bảng điều khiển.");
 
         if (!_hipotOk || !_hipot.IsOpen)
         {
@@ -1116,8 +1136,28 @@ public partial class MainForm : Form
         _grpSecurity.Controls.AddRange(new Control[]
         { lblPass, _settingsPassword, _btnUnlockSettings });
 
+        _grpOfficeLicense.Text = "office.dat";
+        _grpOfficeLicense.Location = new Point(20, 380);
+        _grpOfficeLicense.Size = new Size(1000, 125);
+        _grpOfficeLicense.Visible = false;
+        var officePath = new TextBox
+        {
+            ReadOnly = true, Text = OfficeLicenseService.LicensePath,
+            Location = new Point(20, 30), Size = new Size(950, 25)
+        };
+        var openOfficeFolder = new Button
+        {
+            Text = "Mở thư mục office.dat", Location = new Point(20, 70), Size = new Size(220, 35)
+        };
+        openOfficeFolder.Click += (_, _) =>
+        {
+            if (_settingsAccess.IsRoot)
+                OpenFolder(OfficeLicenseService.LicenseDirectory, "thư mục office.dat", logPath: false);
+        };
+        _grpOfficeLicense.Controls.AddRange(new Control[] { officePath, openOfficeFolder });
+
         _tabSettings.Controls.AddRange(new Control[]
-        { _grpHipot, _grpCb, _grpAction, _grpSecurity });
+        { _grpHipot, _grpCb, _grpAction, _grpSecurity, _grpOfficeLicense });
     }
 
     /// <summary>
@@ -1157,7 +1197,8 @@ public partial class MainForm : Form
         SetCombo(_cbPort, _setting.ComPortControl);
 
         _settingsPassword.Clear();
-        _settingsUnlocked = false;
+        _settingsAccess.Lock();
+        _grpOfficeLicense.Visible = false;
         _btnUnlockSettings.Text = "Mở khóa";
         _lblSetStatus.Text = "";
         DisableSettings(true);
@@ -1176,6 +1217,7 @@ public partial class MainForm : Form
     /// </summary>
     private bool SaveSettings(bool silent = false)
     {
+        if (!_settingsAccess.Unlocked) return true;
         // Chỉ Cổng COM sửa được trên UI; Baud/Parity/Data/Stop giữ nguyên giá trị
         // đã đọc từ file cấu hình khi mở phần mềm (115200 8N1 theo mặc định).
         _setting.ComPortGPT = _hipotPort.Text.Trim();
@@ -1184,6 +1226,7 @@ public partial class MainForm : Form
         try
         {
             _setting.Save(_paths.SettingFile);
+            LockSettings();
             if (!silent)
             {
                 AddLog($"[CT] Đã lưu cấu hình cổng serial: {_paths.SettingFile}");
@@ -1221,7 +1264,7 @@ public partial class MainForm : Form
         if (!SaveSettings()) return;
         _btnApplySettings.Enabled = false;
         try { await ReconnectAsync(); }
-        finally { _btnApplySettings.Enabled = true; }
+        finally { DisableSettings(!_settingsAccess.Unlocked); }
     }
 
     /// <summary>Quét cổng serial đang có trên máy và đổ vào ô Cổng COM của cả hai nhóm.</summary>
@@ -1244,27 +1287,23 @@ public partial class MainForm : Form
     /// <summary>Mở khóa / khóa lại các ô cấu hình bằng mật khẩu cài đặt.</summary>
     private void ToggleSettingsLock()
     {
-        if (_settingsUnlocked)
+        if (_settingsAccess.Unlocked && _settingsPassword.Text.Length == 0)
         {
-            _settingsUnlocked = false;
-            _btnUnlockSettings.Text = "Mở khóa";
-            _settingsPassword.Clear();
-            DisableSettings(true);
+            LockSettings();
             AddLog("[CT] Đã khóa lại ô cài đặt cổng serial.");
             return;
         }
 
-        string expected = _config.Get("Security", "SettingsPassword", "123456");
-        if (_settingsPassword.Text != expected)
+        if (!_settingsAccess.Unlock(_settingsPassword.Text))
         {
             MessageBox.Show("Sai mật khẩu cài đặt.", "Không đủ quyền",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
-        _settingsUnlocked = true;
         _btnUnlockSettings.Text = "Khóa lại";
         _settingsPassword.Clear();
         DisableSettings(false);
+        _grpOfficeLicense.Visible = _settingsAccess.IsRoot;
         AddLog("[CT] Đã mở khóa ô cài đặt cổng serial.");
     }
 
@@ -1276,6 +1315,15 @@ public partial class MainForm : Form
                      _btnScanHipot, _btnScanCb, _btnSaveSettings, _btnApplySettings
                  })
             c.Enabled = !disabled;
+    }
+
+    private void LockSettings()
+    {
+        _settingsAccess.Lock();
+        _grpOfficeLicense.Visible = false;
+        _btnUnlockSettings.Text = "Mở khóa";
+        _settingsPassword.Clear();
+        DisableSettings(true);
     }
 
     #endregion
@@ -1320,7 +1368,7 @@ public partial class MainForm : Form
     }
 
     /// <summary>Mở một thư mục trong Explorer.</summary>
-    private void OpenFolder(string folder, string label)
+    private void OpenFolder(string folder, string label, bool logPath = true)
     {
         try
         {
@@ -1330,11 +1378,13 @@ public partial class MainForm : Form
                 FileName = folder,
                 UseShellExecute = true
             });
-            AddLog($"[CT] Đã mở {label}: {folder}");
+            if (logPath) AddLog($"[CT] Đã mở {label}: {folder}");
         }
         catch (Exception ex)
         {
-            AddLog($"[LỖI] Không mở được {label}: {ex.Message}");
+            if (logPath) AddLog($"[LỖI] Không mở được {label}: {ex.Message}");
+            else MessageBox.Show(this, $"Không mở được thư mục: {ex.Message}", "Cài đặt",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 }
