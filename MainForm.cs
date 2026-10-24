@@ -49,7 +49,8 @@ public partial class MainForm : Form
     /// </summary>
     private bool _fixtureMode;
     private readonly SettingsAccess _settingsAccess = new();
-    private readonly OfficeLicenseService _license = new();
+    private OfficeLicenseService _license;
+    private readonly TextBox _officePath = new();
     private bool _licenseAllowsTest;
     private readonly GroupBox _grpOfficeLicense = new();
     private bool _logFileWarningShown;
@@ -71,6 +72,7 @@ public partial class MainForm : Form
         _paths = new AppPaths();
         _paths.Ensure();
         _setting = SystemSetting.Load(_paths.SettingFile);
+        _license = new OfficeLicenseService(_setting.OfficeDatPath);
         int dayStart = int.TryParse(_config.Get("Shift", "DayStartHour", "8"), out int ds) ? ds : 8;
         int nightStart = int.TryParse(_config.Get("Shift", "NightStartHour", "20"), out int ns) ? ns : 20;
         _report = new ReportWriter(_paths.ReportDir, _paths.PassrateDir, dayStart, nightStart);
@@ -1140,21 +1142,34 @@ public partial class MainForm : Form
         _grpOfficeLicense.Location = new Point(20, 380);
         _grpOfficeLicense.Size = new Size(1000, 125);
         _grpOfficeLicense.Visible = false;
-        var officePath = new TextBox
-        {
-            ReadOnly = true, Text = OfficeLicenseService.LicensePath,
-            Location = new Point(20, 30), Size = new Size(950, 25)
-        };
+        _officePath.ReadOnly = true;
+        _officePath.Text = string.IsNullOrWhiteSpace(_setting.OfficeDatPath)
+            ? OfficeLicenseService.LicensePath : _setting.OfficeDatPath;
+        _officePath.Location = new Point(20, 30);
+        _officePath.Size = new Size(950, 25);
         var openOfficeFolder = new Button
         {
-            Text = "Mở thư mục office.dat", Location = new Point(20, 70), Size = new Size(220, 35)
+            Text = "Chọn file office.dat...", Location = new Point(20, 70), Size = new Size(220, 35)
         };
         openOfficeFolder.Click += (_, _) =>
         {
-            if (_settingsAccess.IsRoot)
-                OpenFolder(OfficeLicenseService.LicenseDirectory, "thư mục office.dat", logPath: false);
+            if (!_settingsAccess.IsRoot) return;
+            using var picker = new OpenFileDialog
+            {
+                Title = "Chọn file office.dat",
+                Filter = "File office.dat (office.dat)|office.dat",
+                CheckFileExists = true,
+                CheckPathExists = true,
+                Multiselect = false,
+                RestoreDirectory = true,
+                FileName = "office.dat"
+            };
+            string? folder = Path.GetDirectoryName(_officePath.Text);
+            if (Directory.Exists(folder)) picker.InitialDirectory = folder;
+            if (picker.ShowDialog(this) == DialogResult.OK)
+                _officePath.Text = picker.FileName;
         };
-        _grpOfficeLicense.Controls.AddRange(new Control[] { officePath, openOfficeFolder });
+        _grpOfficeLicense.Controls.AddRange(new Control[] { _officePath, openOfficeFolder });
 
         _tabSettings.Controls.AddRange(new Control[]
         { _grpHipot, _grpCb, _grpAction, _grpSecurity, _grpOfficeLicense });
@@ -1222,10 +1237,13 @@ public partial class MainForm : Form
         // đã đọc từ file cấu hình khi mở phần mềm (115200 8N1 theo mặc định).
         _setting.ComPortGPT = _hipotPort.Text.Trim();
         _setting.ComPortControl = _cbPort.Text.Trim();
+        string previousOfficePath = _setting.OfficeDatPath;
+        if (_settingsAccess.IsRoot) _setting.OfficeDatPath = _officePath.Text;
 
         try
         {
             _setting.Save(_paths.SettingFile);
+            _license = new OfficeLicenseService(_setting.OfficeDatPath);
             LockSettings();
             if (!silent)
             {
@@ -1238,6 +1256,7 @@ public partial class MainForm : Form
         }
         catch (Exception ex)
         {
+            _setting.OfficeDatPath = previousOfficePath;
             AddLog($"[LỖI] Không lưu được file cấu hình: {ex.Message}");
             if (!silent)
                 MessageBox.Show($"Không lưu được file cấu hình:\n{_paths.SettingFile}\n\n{ex.Message}",
@@ -1320,6 +1339,8 @@ public partial class MainForm : Form
     private void LockSettings()
     {
         _settingsAccess.Lock();
+        _officePath.Text = string.IsNullOrWhiteSpace(_setting.OfficeDatPath)
+            ? OfficeLicenseService.LicensePath : _setting.OfficeDatPath;
         _grpOfficeLicense.Visible = false;
         _btnUnlockSettings.Text = "Mở khóa";
         _settingsPassword.Clear();

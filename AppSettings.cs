@@ -11,6 +11,7 @@ namespace GPT9000_WinForms_TestSystem;
 public sealed class SystemSetting
 {
     public string configName { get; set; } = "SystemSetting.xml";
+    public string OfficeDatPath { get; set; } = @"C:\Program Files\offices\office.dat";
 
     /* Máy hipot GPT-9800 series */
     public string ComPortGPT { get; set; } = "COM2";

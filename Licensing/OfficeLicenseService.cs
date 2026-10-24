@@ -14,7 +14,8 @@ internal sealed class OfficeLicenseService
     private readonly string _secret;
     private readonly PublicKeyBundle? _keys;
 
-    public OfficeLicenseService() : this(LicensePath, ReadResource("product-id.txt").Trim(),
+    public OfficeLicenseService(string? path = null) : this(
+        string.IsNullOrWhiteSpace(path) ? LicensePath : path, ReadResource("product-id.txt").Trim(),
         ReadResource("office-secret.txt").Trim(), ReadResource("public-keys.json")) { }
 
     internal OfficeLicenseService(string path, string productId, string secret, string publicKeys)

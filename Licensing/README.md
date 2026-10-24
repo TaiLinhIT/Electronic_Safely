@@ -1,7 +1,10 @@
 # office.dat integration
 
 The client opens normally without a license. Every START (screen, F5, or board)
-reads `C:\Program Files\offices\office.dat` again. Missing, locked, corrupt,
+reads the configured `OfficeDatPath` in `Config\SystemSetting.xml` again (default:
+`C:\Program Files\offices\office.dat`). Root can browse for an existing office.dat
+with the Windows file picker and save its path. The file is used in place, not copied;
+Cancel leaves the selection unchanged. Missing, locked, corrupt,
 wrong-machine, invalid-signature, not-yet-valid and expired files silently deny START.
 No failed measurement/report is created. Replace the file to renew without restarting.
 An already running measurement retains its normal stop and completion handling.

@@ -4,7 +4,7 @@
 
 - `123456`: mở các ô cài đặt. `root123456`: mở các ô cài đặt và hiện đường dẫn/nút mở thư mục `office.dat`.
 - Lưu thành công, khóa lại hoặc rời tab Cài đặt sẽ khóa các ô và ẩn phần `office.dat`.
-- File nằm tại `C:\Program Files\offices\office.dat`; nút mở thư mục cũng trỏ đến đây.
+- Mặc định dùng `C:\Program Files\offices\office.dat`. Đăng nhập root, bấm **Chọn file office.dat...**, duyệt đến file rồi **Lưu cấu hình** để ghi nhớ đường dẫn mới.
 - App vẫn mở khi thiếu/hết hạn/sai license. Bấm Test sẽ không chạy và không hiện thông báo license.
 - Thay `office.dat` hợp lệ để gia hạn; lần bấm Test tiếp theo đọc lại file, không cần khởi động lại.
 - Chi tiết build, khóa nhúng và kiểm thử: [Licensing/README.md](Licensing/README.md).
