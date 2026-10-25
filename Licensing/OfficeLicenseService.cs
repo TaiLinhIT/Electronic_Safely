@@ -3,7 +3,7 @@ using LicenseShared;
 
 namespace GPT9000_WinForms_TestSystem;
 
-/// <summary>No UI or logging: a missing, invalid or expired license silently denies START.</summary>
+/// <summary>Verifies the current office.dat and its signed main/extra validity periods before START.</summary>
 internal sealed class OfficeLicenseService
 {
     public static string LicenseDirectory => @"C:\Program Files\offices";
@@ -26,7 +26,11 @@ internal sealed class OfficeLicenseService
     }
 
     public bool CanStartTest()
+        => CanStartTest(out _);
+
+    public bool CanStartTest(out bool expired)
     {
+        expired = false;
         try
         {
             // Read again on every START: replacing office.dat takes effect without restarting.
@@ -34,7 +38,7 @@ internal sealed class OfficeLicenseService
             if (stream.Length is < 55 or > (54 + OfficeLicenseFile.MaxPlaintextBytes)) return false;
             var bytes = new byte[(int)stream.Length];
             stream.ReadExactly(bytes);
-            return Validate(bytes, DateTimeOffset.UtcNow);
+            return Validate(bytes, DateTimeOffset.UtcNow, out expired);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
             or System.Security.SecurityException or ArgumentException or InvalidOperationException)
@@ -44,7 +48,11 @@ internal sealed class OfficeLicenseService
     }
 
     internal bool Validate(byte[] bytes, DateTimeOffset now)
+        => Validate(bytes, now, out _);
+
+    internal bool Validate(byte[] bytes, DateTimeOffset now, out bool expired)
     {
+        expired = false;
         byte[]? secret = null;
         try
         {
@@ -72,7 +80,10 @@ internal sealed class OfficeLicenseService
             if (payload.BindingMode == DeviceBindingMode.ManualDeviceId
                 && MacAddress.Matches(payload.DeviceId, MacAddress.GetCurrent()))
                 deviceId = payload.DeviceId;
-            return LicenseRules.Evaluate(payload, _productId, fingerprint, deviceId, now).IsValid;
+            var result = LicenseRules.Evaluate(payload, _productId, fingerprint, deviceId, now);
+            // An expiry indication is trusted only after signature, product and machine checks.
+            expired = result.Status == LicenseStatus.Expired;
+            return result.IsValid;
         }
         catch (Exception ex) when (ex is FormatException or CryptographicException or ArgumentException
             or IOException or InvalidOperationException or System.Security.SecurityException)

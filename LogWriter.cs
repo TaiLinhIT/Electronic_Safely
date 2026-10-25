@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace GPT9000_WinForms_TestSystem;
 
@@ -25,6 +27,11 @@ public sealed class LogWriter : IDisposable
     private StreamWriter? _writer;
     private string _date = "";
     private bool _suspended;
+    private static readonly Regex HeartbeatMessage = new(
+        @"^\s*(?:\[CB\]\s*)?EVT\s+HB(?:\s|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex FaultMessage = new(
+        @"\b(?:ERR|ERROR|WARN|WARNING|FAULT|[A-Z_]*TIMEOUT|INTERLOCK_OPEN|UNIT_LOST)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     /// <summary>Thư mục chứa file log.</summary>
     public string Dir { get; }
@@ -32,7 +39,8 @@ public sealed class LogWriter : IDisposable
     public LogWriter(string dir) => Dir = dir;
 
     /// <summary>Đường dẫn file log của ngày hiện tại.</summary>
-    public string CurrentPath => Path.Combine(Dir, $"{DateTime.Now:yyyy-MM-dd}_Log.csv");
+    public string CurrentPath => Path.Combine(Dir,
+        DateTimeOffset.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + "_Log.csv");
 
     /// <summary>Lỗi gần nhất khi ghi file (rỗng nếu mọi thứ bình thường).</summary>
     public string LastError { get; private set; } = "";
@@ -42,19 +50,25 @@ public sealed class LogWriter : IDisposable
     /// Gọi được từ bất kỳ thread nào.
     /// </summary>
     public string? Write(string message)
+        => Write(message, DateTimeOffset.Now);
+
+    /// <summary>Dùng cùng thời điểm sự kiện cho tên tệp, nội dung CSV và nhật ký trên màn hình.</summary>
+    public string? Write(string message, DateTimeOffset timestamp)
     {
+        if (!ShouldLog(message)) return null;
         lock (_lock)
         {
-            if (_suspended) return LastError.Length > 0 ? LastError : "đã ngừng ghi log";
+            if (_suspended) return LastError.Length > 0 ? LastError : "đã ngừng ghi nhật ký";
             try
             {
                 Directory.CreateDirectory(Dir);
 
-                string date = DateTime.Now.ToString("yyyy-MM-dd");
+                string date = timestamp.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
                 if (_writer is null || date != _date)
                 {
                     _writer?.Dispose();
-                    string path = CurrentPath;
+                    _writer = null;
+                    string path = Path.Combine(Dir, $"{date}_Log.csv");
                     EnsureBom(path);                       // chữa file thiếu BOM (bản cũ)
                     // UTF8Encoding(true) -> StreamWriter sẽ ghi preamble EF BB BF
                     // khi file trống, nhờ đó Excel nhận diện được UTF-8.
@@ -65,7 +79,7 @@ public sealed class LogWriter : IDisposable
                 }
 
                 _writer.WriteLine(
-                    $"\"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}\",\"{LevelOf(message)}\",\"{Escape(message)}\"");
+                    $"\"{FormatTimestamp(timestamp)}\",\"{LevelOf(message)}\",\"{Escape(message)}\"");
                 _writer.Flush();
                 LastError = "";
                 return null;
@@ -73,12 +87,22 @@ public sealed class LogWriter : IDisposable
             catch (Exception ex)
             {
                 // Gặp lỗi (thường là file đang bị Excel giữ) -> ngừng ghi để không lặp lỗi liên tục.
-                LastError = $"Không ghi được file log ({ex.GetType().Name}): {ex.Message}";
+                LastError = $"Không ghi được tệp nhật ký ({ex.GetType().Name}): {ex.Message}";
                 _suspended = true;
                 return LastError;
             }
         }
     }
+
+    /// <summary>Bỏ heartbeat thông thường; giữ sự kiện, lỗi và cảnh báo của thiết bị.</summary>
+    public static bool ShouldLog(string message)
+        => !string.IsNullOrWhiteSpace(message) &&
+           (!HeartbeatMessage.IsMatch(message) || FaultMessage.IsMatch(message));
+
+    private static string FormatTimestamp(DateTimeOffset timestamp)
+        // Dấu | và múi giờ giữ ô CSV ở dạng văn bản khi mở trực tiếp bằng Excel.
+        // Chỉ đặt trong dấu ngoặc kép CSV vẫn cho phép Excel tự đổi sang mm:ss.0.
+        => timestamp.ToString("dd/MM/yyyy '|' HH:mm:ss.fff '(UTC'zzz')'", CultureInfo.InvariantCulture);
 
     /// <summary>Tự mở lại việc ghi (gọi sau khi người dùng đã đóng file Excel).</summary>
     public void Resume()
@@ -97,7 +121,8 @@ public sealed class LogWriter : IDisposable
         if (message.Contains("[LỖI]", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("[ERROR]", StringComparison.OrdinalIgnoreCase)) return "ERROR";
         if (message.Contains("[DỪNG]", StringComparison.OrdinalIgnoreCase)) return "STOP";
-        if (message.Contains("[WARN]", StringComparison.OrdinalIgnoreCase)) return "WARN";
+        if (message.Contains("[WARN]", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("[CẢNH BÁO]", StringComparison.OrdinalIgnoreCase)) return "WARN";
         if (message.Contains("[CT]", StringComparison.OrdinalIgnoreCase)) return "PROGRAM";
         if (message.Contains("[CB]", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("[HIPOT]", StringComparison.OrdinalIgnoreCase) ||

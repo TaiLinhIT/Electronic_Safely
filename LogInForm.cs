@@ -21,6 +21,7 @@ public sealed class LogInForm : Form
 
     public LogInForm(PasswordStore store)
     {
+        AppBranding.ApplyIcon(this);
         _store = store;
 
         Text = "Đăng Nhập Tài Khoản Quản Lý";
@@ -53,11 +54,12 @@ public sealed class LogInForm : Form
         _tbNew2.Location = new Point(150, 177); _tbNew2.Size = new Size(280, 25);
         _tbNew2.UseSystemPasswordChar = true;
 
-        _hint.Text = "Để đổi mật khẩu, nhập mật khẩu cũ, mới và ấn OK";
-        _hint.ForeColor = Color.FromArgb(0, 128, 128); _hint.Location = new Point(20, 212);
-        _hint.Size = new Size(420, 20); _hint.Visible = false;
+        _hint.Text = "Nhập mật khẩu cũ và mới, rồi bấm Đồng ý để đổi mật khẩu.";
+        _hint.ForeColor = Color.FromArgb(0, 128, 128); _hint.Location = new Point(20, 206);
+        _hint.Font = new Font("Segoe UI", 9F);
+        _hint.Size = new Size(420, 34); _hint.Visible = false;
 
-        var ok = new Button { Text = "OK", Location = new Point(215, 245), Size = new Size(100, 35), BackColor = Color.LightGreen };
+        var ok = new Button { Text = "Đồng ý", Location = new Point(215, 245), Size = new Size(100, 35), BackColor = Color.LightGreen };
         ok.Click += (_, _) => OnOk();
         var cancel = new Button { Text = "Thoát", Location = new Point(330, 245), Size = new Size(100, 35) };
         cancel.Click += (_, _) => { Admin = false; Close(); };
@@ -90,11 +92,11 @@ public sealed class LogInForm : Form
             _tries++;
             if (_tries < 4)
             {
-                MessageBox.Show("Nhập sai mật khẩu người dùng quản lý", "Thông báo lỗi",
+                VietnameseMessageBox.Show("Nhập sai mật khẩu người dùng quản lý", "Thông báo lỗi",
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            MessageBox.Show("Bạn đã nhập sai mật khẩu quá 3 lần!", "Thông báo lỗi",
+            VietnameseMessageBox.Show("Bạn đã nhập sai mật khẩu quá 3 lần!", "Thông báo lỗi",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
             Admin = false;
             Close();
@@ -103,13 +105,13 @@ public sealed class LogInForm : Form
 
         if (_tbPassword.Text != current)
         {
-            MessageBox.Show("Nhập sai mật khẩu người dùng quản lý", "Thông báo lỗi",
+            VietnameseMessageBox.Show("Nhập sai mật khẩu người dùng quản lý", "Thông báo lỗi",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
         if (_tbNew1.Text != _tbNew2.Text || _tbNew1.Text.Length == 0)
         {
-            MessageBox.Show("Mật khẩu mới không trùng nhau!", "Thông báo lỗi",
+            VietnameseMessageBox.Show("Mật khẩu mới không trùng nhau!", "Thông báo lỗi",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }

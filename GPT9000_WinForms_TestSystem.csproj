@@ -5,17 +5,39 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationIcon>Assets\MitTechApp.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="tests\**\*.cs" />
+    <EmbeddedResource Include="Assets\MitTechLogo.png" LogicalName="Branding.Logo.png" />
+    <EmbeddedResource Include="Assets\MitTechApp.ico" LogicalName="Branding.App.ico" />
     <EmbeddedResource Include="Licensing\Provisioning\product-id.txt" Condition="Exists('Licensing\Provisioning\product-id.txt')" LogicalName="Licensing.product-id.txt" />
     <EmbeddedResource Include="Licensing\Provisioning\office-secret.txt" Condition="Exists('Licensing\Provisioning\office-secret.txt')" LogicalName="Licensing.office-secret.txt" />
     <EmbeddedResource Include="Licensing\Provisioning\public-keys.json" Condition="Exists('Licensing\Provisioning\public-keys.json')" LogicalName="Licensing.public-keys.json" />
   </ItemGroup>
   <ItemGroup>
+    <None Update="Assets\MitTechApp.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Update="firmware\build\GPT9800_ControlBoard.hex">
+      <TargetPath>Firmware\GPT9800_ControlBoard.hex</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Update="firmware\GPT9800_ControlBoard\GPT9800_ControlBoard.ino">
+      <TargetPath>Firmware\GPT9800_ControlBoard\GPT9800_ControlBoard.ino</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Update="firmware\README.md">
+      <TargetPath>Firmware\Huong-dan-thoi-gian.md</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
     <None Update="config.ini">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

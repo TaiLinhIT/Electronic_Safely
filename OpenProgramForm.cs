@@ -15,6 +15,7 @@ public sealed class OpenProgramForm : Form
 
     public OpenProgramForm(string programDir)
     {
+        AppBranding.ApplyIcon(this);
         Text = "Lựa chọn chương trình";
         StartPosition = FormStartPosition.CenterParent;
         ClientSize = new Size(640, 430);
@@ -62,13 +63,13 @@ public sealed class OpenProgramForm : Form
     {
         if (_grid.CurrentRow is null)
         {
-            MessageBox.Show("Chưa chọn chương trình nào.", "Thông báo",
+            VietnameseMessageBox.Show("Chưa chọn chương trình nào.", "Thông báo",
                             MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         string name = _grid.CurrentRow.Cells[1].Value?.ToString() ?? "";
         if (name.Length == 0) return;
-        if (MessageBox.Show($"Bạn có chọn model {name}?", "Xác nhận",
+        if (VietnameseMessageBox.Show($"Bạn có chọn chương trình {name}?", "Xác nhận",
                             MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
         SelectedFile = name + ".csv";

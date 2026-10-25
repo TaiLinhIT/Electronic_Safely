@@ -8,7 +8,6 @@ partial class MainForm
     private System.Windows.Forms.TabPage _tabSettings;
     private System.Windows.Forms.Panel _headerPanel;
     private System.Windows.Forms.Label _lblTitle;
-    private System.Windows.Forms.Label _lblLogo;
     private System.Windows.Forms.TableLayoutPanel _homeLayout;
     private System.Windows.Forms.GroupBox _grpTestItems;
     private System.Windows.Forms.Label _lblTestItems;
@@ -74,7 +73,11 @@ partial class MainForm
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing && (components != null)) components.Dispose();
+        if (disposing)
+        {
+            _headerLogo.Image?.Dispose();
+            components?.Dispose();
+        }
         base.Dispose(disposing);
     }
 
@@ -86,7 +89,6 @@ partial class MainForm
         this._tabSettings = new System.Windows.Forms.TabPage();
         this._headerPanel = new System.Windows.Forms.Panel();
         this._lblTitle = new System.Windows.Forms.Label();
-        this._lblLogo = new System.Windows.Forms.Label();
         this._homeLayout = new System.Windows.Forms.TableLayoutPanel();
         this._grpTestItems = new System.Windows.Forms.GroupBox();
         this._lblTestItems = new System.Windows.Forms.Label();
@@ -144,7 +146,6 @@ partial class MainForm
         // _headerPanel
         this._headerPanel.Dock = System.Windows.Forms.DockStyle.Top;
         this._headerPanel.Controls.Add(this._lblTitle);
-        this._headerPanel.Controls.Add(this._lblLogo);
         this._headerPanel.Location = new System.Drawing.Point(0, 0);
         this._headerPanel.Name = "_headerPanel";
         this._headerPanel.Size = new System.Drawing.Size(1450, 80);
@@ -158,18 +159,7 @@ partial class MainForm
         this._lblTitle.Location = new System.Drawing.Point(20, 20);
         this._lblTitle.Name = "_lblTitle";
         this._lblTitle.Size = new System.Drawing.Size(600, 40);
-        this._lblTitle.Text = "GPT-9000 Safety Test System";
-
-        // _lblLogo
-        this._lblLogo.Anchor = ((System.Windows.Forms.AnchorStyles)((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Right)));
-        this._lblLogo.Font = new System.Drawing.Font("Segoe UI", 24F, System.Drawing.FontStyle.Bold);
-        this._lblLogo.ForeColor = System.Drawing.Color.White;
-        this._lblLogo.Location = new System.Drawing.Point(1300, 15);
-        this._lblLogo.Name = "_lblLogo";
-        this._lblLogo.Size = new System.Drawing.Size(120, 50);
-        this._lblLogo.Text = "HAN";
-        this._lblLogo.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
-        this._lblLogo.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
+        this._lblTitle.Text = "Hệ thống kiểm tra an toàn điện GPT-9000";
 
         // _tabs - chỉ còn Home + Cài đặt (tab Biểu đồ đã gộp vào Home).
         this._tabs.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
@@ -188,7 +178,7 @@ partial class MainForm
         this._tabHome.Name = "_tabHome";
         this._tabHome.Padding = new System.Windows.Forms.Padding(10);
         this._tabHome.Size = new System.Drawing.Size(1442, 787);
-        this._tabHome.Text = "Home";
+        this._tabHome.Text = "Trang chính";
 
         // _homeLayout - 2 cột x 3 hàng:
         //   (0,0) lưới lịch sử kết quả | (1,0) TEST INFORMATION gọn góc phải
@@ -221,12 +211,12 @@ partial class MainForm
         this._grpTestItems.Size = new System.Drawing.Size(874, 344);
         this._grpTestItems.Text = "";
 
-        // _lblTestItems - tiêu đề + tóm tắt tham số chương trình (cập nhật trong code).
+        // _lblTestItems - tiêu đề bảng; giá trị phép thử hiển thị trong các dòng dữ liệu.
         this._lblTestItems.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
         this._lblTestItems.Location = new System.Drawing.Point(10, 5);
         this._lblTestItems.Name = "_lblTestItems";
         this._lblTestItems.Size = new System.Drawing.Size(850, 25);
-        this._lblTestItems.Text = "TEST RESULTS - lịch sử (mới nhất ở trên cùng)";
+        this._lblTestItems.Text = "LỊCH SỬ KẾT QUẢ";
 
         // _gridPanel
         this._gridPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
@@ -282,28 +272,28 @@ partial class MainForm
         this._lblHipot.Location = new System.Drawing.Point(10, 44);
         this._lblHipot.Name = "_lblHipot";
         this._lblHipot.Size = new System.Drawing.Size(140, 16);
-        this._lblHipot.Text = "HIPOT (GPT-9800):";
+        this._lblHipot.Text = "MÁY THỬ CAO ÁP:";
 
         this._valHipot.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
         this._valHipot.ForeColor = System.Drawing.Color.Gray;
         this._valHipot.Location = new System.Drawing.Point(10, 61);
         this._valHipot.Name = "_valHipot";
         this._valHipot.Size = new System.Drawing.Size(140, 20);
-        this._valHipot.Text = "NOT CONNECTED";
+        this._valHipot.Text = "Chưa kết nối";
 
         this._lblCb.Font = new System.Drawing.Font("Segoe UI", 8F, System.Drawing.FontStyle.Regular);
         this._lblCb.ForeColor = System.Drawing.Color.Gray;
         this._lblCb.Location = new System.Drawing.Point(158, 44);
         this._lblCb.Name = "_lblCb";
         this._lblCb.Size = new System.Drawing.Size(140, 16);
-        this._lblCb.Text = "CONTROL BOARD:";
+        this._lblCb.Text = "BẢNG ĐIỀU KHIỂN:";
 
         this._valCb.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
         this._valCb.ForeColor = System.Drawing.Color.Gray;
         this._valCb.Location = new System.Drawing.Point(158, 61);
         this._valCb.Name = "_valCb";
         this._valCb.Size = new System.Drawing.Size(140, 20);
-        this._valCb.Text = "NOT CONNECTED";
+        this._valCb.Text = "Chưa kết nối";
 
         this._lblClock.Font = new System.Drawing.Font("Segoe UI", 10F, System.Drawing.FontStyle.Bold);
         this._lblClock.ForeColor = System.Drawing.Color.FromArgb(30, 58, 95);
@@ -343,7 +333,7 @@ partial class MainForm
         this._lblFpy.Location = new System.Drawing.Point(10, 142);
         this._lblFpy.Name = "_lblFpy";
         this._lblFpy.Size = new System.Drawing.Size(65, 22);
-        this._lblFpy.Text = "FPY";
+        this._lblFpy.Text = "Tỷ lệ đạt";
         this._valFpy.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
         this._valFpy.Location = new System.Drawing.Point(75, 142);
         this._valFpy.Name = "_valFpy";
@@ -354,7 +344,7 @@ partial class MainForm
         this._lblTotal.Location = new System.Drawing.Point(10, 166);
         this._lblTotal.Name = "_lblTotal";
         this._lblTotal.Size = new System.Drawing.Size(65, 22);
-        this._lblTotal.Text = "TOTAL";
+        this._lblTotal.Text = "Tổng";
         this._valTotal.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
         this._valTotal.Location = new System.Drawing.Point(75, 166);
         this._valTotal.Name = "_valTotal";
@@ -366,7 +356,7 @@ partial class MainForm
         this._lblCycleTime.Location = new System.Drawing.Point(150, 94);
         this._lblCycleTime.Name = "_lblCycleTime";
         this._lblCycleTime.Size = new System.Drawing.Size(85, 22);
-        this._lblCycleTime.Text = "Cycle Time:";
+        this._lblCycleTime.Text = "Chu kỳ:";
         this._valCycleTime.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
         this._valCycleTime.Location = new System.Drawing.Point(235, 94);
         this._valCycleTime.Name = "_valCycleTime";
@@ -377,7 +367,7 @@ partial class MainForm
         this._lblModel.Location = new System.Drawing.Point(150, 118);
         this._lblModel.Name = "_lblModel";
         this._lblModel.Size = new System.Drawing.Size(85, 22);
-        this._lblModel.Text = "Model:";
+        this._lblModel.Text = "Chương trình:";
         this._valModel.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
         this._valModel.Location = new System.Drawing.Point(235, 118);
         this._valModel.Name = "_valModel";
@@ -388,18 +378,18 @@ partial class MainForm
         this._lblApplication.Location = new System.Drawing.Point(150, 142);
         this._lblApplication.Name = "_lblApplication";
         this._lblApplication.Size = new System.Drawing.Size(85, 22);
-        this._lblApplication.Text = "Application:";
+        this._lblApplication.Text = "Ứng dụng:";
         this._valApplication.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
         this._valApplication.Location = new System.Drawing.Point(235, 142);
         this._valApplication.Name = "_valApplication";
         this._valApplication.Size = new System.Drawing.Size(230, 22);
-        this._valApplication.Text = "System";
+        this._valApplication.Text = "Hệ thống";
         this._valApplication.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
 
         this._lblVersion.Location = new System.Drawing.Point(150, 166);
         this._lblVersion.Name = "_lblVersion";
         this._lblVersion.Size = new System.Drawing.Size(85, 22);
-        this._lblVersion.Text = "Version:";
+        this._lblVersion.Text = "Phiên bản:";
         this._valVersion.Font = new System.Drawing.Font("Segoe UI", 8.5F, System.Drawing.FontStyle.Bold);
         this._valVersion.Location = new System.Drawing.Point(235, 166);
         this._valVersion.Name = "_valVersion";
@@ -413,7 +403,7 @@ partial class MainForm
         this._btnSelectProgram.Name = "_btnSelectProgram";
         this._btnSelectProgram.Size = new System.Drawing.Size(455, 36);
         this._btnSelectProgram.TabIndex = 3;
-        this._btnSelectProgram.Text = "Chọn chương trình test...";
+        this._btnSelectProgram.Text = "Chọn chương trình kiểm tra...";
         this._btnSelectProgram.UseVisualStyleBackColor = true;
 
         this._btnOpenLog.Font = new System.Drawing.Font("Segoe UI", 8.5F);
@@ -421,7 +411,7 @@ partial class MainForm
         this._btnOpenLog.Name = "_btnOpenLog";
         this._btnOpenLog.Size = new System.Drawing.Size(223, 34);
         this._btnOpenLog.TabIndex = 8;
-        this._btnOpenLog.Text = "Mở thư mục log";
+        this._btnOpenLog.Text = "Mở thư mục nhật ký";
         this._btnOpenLog.UseVisualStyleBackColor = true;
 
         this._btnReconnect.Font = new System.Drawing.Font("Segoe UI", 8.5F);
@@ -447,7 +437,7 @@ partial class MainForm
         this._lblCharts.Location = new System.Drawing.Point(10, 5);
         this._lblCharts.Name = "_lblCharts";
         this._lblCharts.Size = new System.Drawing.Size(700, 25);
-        this._lblCharts.Text = "RESULT CHARTS - TOTAL/PASS/FAIL + TRÒN FPY + XU HƯỚNG DÒNG RÒ (ca hiện tại)";
+        this._lblCharts.Text = "BIỂU ĐỒ KẾT QUẢ | TỶ LỆ ĐẠT | DÒNG RÒ (mA)";
 
         // _chartsLayout - 3 biểu đồ cùng hàng: cột (34%) | tròn (26%) | xu hướng (40%).
         this._chartsLayout.ColumnCount = 3;
@@ -477,7 +467,7 @@ partial class MainForm
         this._lblTestResult.Location = new System.Drawing.Point(10, 5);
         this._lblTestResult.Name = "_lblTestResult";
         this._lblTestResult.Size = new System.Drawing.Size(200, 25);
-        this._lblTestResult.Text = "TEST RESULT";
+        this._lblTestResult.Text = "KẾT QUẢ KIỂM TRA";
 
         // _status - vùng bấm được: click để START/STOP, F5/Esc cũng điều khiển được.
         this._status.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
@@ -485,7 +475,7 @@ partial class MainForm
         this._status.Location = new System.Drawing.Point(10, 32);
         this._status.Name = "_status";
         this._status.Size = new System.Drawing.Size(516, 330);
-        this._status.Text = "IDLE";
+        this._status.Text = "SẴN SÀNG";
         this._status.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
         this._status.BorderStyle = System.Windows.Forms.BorderStyle.FixedSingle;
         this._status.Cursor = System.Windows.Forms.Cursors.Hand;
@@ -497,7 +487,7 @@ partial class MainForm
         this._lblStartHint.Location = new System.Drawing.Point(10, 368);
         this._lblStartHint.Name = "_lblStartHint";
         this._lblStartHint.Size = new System.Drawing.Size(516, 25);
-        this._lblStartHint.Text = "Bấm vào khung trạng thái để START / STOP   (F5 / Esc)";
+        this._lblStartHint.Text = "Bấm vào khung để bắt đầu / dừng   (F5 / Esc)";
         this._lblStartHint.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
 
         // _grpTestLog - thu nhỏ còn ~1/3 chiều cao cũ (130 px thay vì 380 px).
@@ -514,7 +504,7 @@ partial class MainForm
         this._lblTestLog.Location = new System.Drawing.Point(10, 3);
         this._lblTestLog.Name = "_lblTestLog";
         this._lblTestLog.Size = new System.Drawing.Size(200, 22);
-        this._lblTestLog.Text = "TEST LOG";
+        this._lblTestLog.Text = "NHẬT KÝ KIỂM TRA";
 
         // _logPanel
         this._logPanel.Anchor = ((System.Windows.Forms.AnchorStyles)((((System.Windows.Forms.AnchorStyles.Top | System.Windows.Forms.AnchorStyles.Bottom) | System.Windows.Forms.AnchorStyles.Left) | System.Windows.Forms.AnchorStyles.Right)));
@@ -536,7 +526,7 @@ partial class MainForm
         this.Controls.Add(this._tabs);
         this.Controls.Add(this._headerPanel);
         this.Name = "MainForm";
-        this.Text = "GPT-9000 Safety Test System";
+        this.Text = "Hệ thống kiểm tra an toàn điện GPT-9000";
         this.Load += new System.EventHandler(this.MainForm_Load);
 
         // ResumeLayout cho TẤT CẢ container đã SuspendLayout ở trên.

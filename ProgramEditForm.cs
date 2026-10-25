@@ -24,49 +24,54 @@ public sealed class ProgramEditForm : Form
 
     public ProgramEditForm(string programDir, string? initialFile = null)
     {
+        AppBranding.ApplyIcon(this);
         _programDir = programDir;
 
         Text = "Chỉnh sửa chương trình phép thử";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(820, 380);
-        MinimumSize = new Size(820, 380);
+        ClientSize = new Size(1000, 480);
+        MinimumSize = Size;
         Font = new Font("Segoe UI", 10F);
         BackColor = Color.FromArgb(248, 250, 252);
 
         var grid = new DataGridView
         {
-            Location = new Point(12, 12), Size = new Size(796, 120),
+            Location = new Point(12, 12), Size = new Size(976, 160),
             ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false,
             RowHeadersVisible = false, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
             BackgroundColor = Color.White, BorderStyle = BorderStyle.Fixed3D, SelectionMode = DataGridViewSelectionMode.FullRowSelect
         };
-        string[] cols = { "Program Name", "Voltage (kV)", "Frequency (Hz)", "Time test (S)",
-                          "Ramp test (S)", "Ref (mA)", "Hi set (mA)", "Low set (mA)" };
+        string[] cols = { "Tên chương trình", "Điện áp (kV)", "Tần số (Hz)", "Thời gian thử (s)",
+                          "Thời gian tăng áp (s)", "Dòng tham chiếu (mA)", "Ngưỡng trên (mA)", "Ngưỡng dưới (mA)" };
         foreach (string c in cols) grid.Columns.Add(c, c);
+        grid.ColumnHeadersDefaultCellStyle.WrapMode = DataGridViewTriState.True;
+        grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+        grid.ColumnHeadersHeight = 72;
+        grid.RowTemplate.Height = 32;
         grid.Rows.Add();
 
-        var grp = new GroupBox { Text = "Tham số phép thử", Location = new Point(12, 145), Size = new Size(600, 180) };
-        AddField(grp, "Program Name:", _tbName, 0);
-        AddField(grp, "Voltage test (kV):", _tbVoltage, 1);
-        AddField(grp, "Frequency (Hz):", _cbFreq, 2);
-        AddField(grp, "Time test (S):", _tbTime, 3);
-        AddField(grp, "Ramp test (S):", _tbRamp, 4);
-        AddField(grp, "Reference (mA):", _tbRef, 5);
-        AddField(grp, "High set (mA):", _tbHigh, 6);
-        AddField(grp, "Low set (mA):", _tbLow, 7);
+        var grp = new GroupBox { Text = "Tham số phép thử", Location = new Point(12, 186), Size = new Size(760, 270) };
+        AddField(grp, "Tên chương trình:", _tbName, 0);
+        AddField(grp, "Điện áp thử (kV):", _tbVoltage, 1);
+        AddField(grp, "Tần số (Hz):", _cbFreq, 2);
+        AddField(grp, "Thời gian thử (s):", _tbTime, 3);
+        AddField(grp, "Thời gian tăng áp (s):", _tbRamp, 4);
+        AddField(grp, "Dòng tham chiếu (mA):", _tbRef, 5);
+        AddField(grp, "Ngưỡng trên (mA):", _tbHigh, 6);
+        AddField(grp, "Ngưỡng dưới (mA):", _tbLow, 7);
         _cbFreq.Items.AddRange(new object[] { "0", "50", "51", "52", "53", "54", "55", "56", "57", "58", "59", "60" });
         _cbFreq.DropDownStyle = System.Windows.Forms.ComboBoxStyle.DropDown;
 
-        var ops = new GroupBox { Text = "Thao tác", Location = new Point(624, 145), Size = new Size(184, 180) };
+        var ops = new GroupBox { Text = "Thao tác", Location = new Point(784, 186), Size = new Size(204, 270) };
         ops.Controls.AddRange(new Control[]
         {
-            NewBtn("Mở", 14, 25, (_, _) => OpenFile()),
-            NewBtn("Áp dụng", 98, 25, (_, _) => ApplyTo(grid)),
-            NewBtn("Mặc định", 14, 72, (_, _) => ResetDefaults(grid)),
-            NewBtn("Lưu", 98, 72, (_, _) => Save(grid)),
-            NewBtn("Thoát", 14, 122, (_, _) => Close())
+            NewBtn("Mở", 14, 35, (_, _) => OpenFile()),
+            NewBtn("Áp dụng", 108, 35, (_, _) => ApplyTo(grid)),
+            NewBtn("Mặc định", 14, 105, (_, _) => ResetDefaults(grid)),
+            NewBtn("Lưu", 108, 105, (_, _) => Save(grid)),
+            NewBtn("Thoát", 14, 175, (_, _) => Close())
         });
-        foreach (Control c in ops.Controls) c.Size = new Size(72, 40);
+        foreach (Control c in ops.Controls) c.Size = new Size(84, 44);
 
         Controls.AddRange(new Control[] { grid, grp, ops });
 
@@ -89,11 +94,12 @@ public sealed class ProgramEditForm : Form
 
     private static void AddField(Control parent, string label, Control tb, int row)
     {
-        int y = 22 + row * 0;
-        y = 22 + row * 18;
-        var lb = new Label { Text = label, Location = new Point(10, y + 2), AutoSize = true };
-        tb.Location = new Point(190, y);
-        tb.Size = new Size(90, 22);
+        int x = row / 4 * 365;
+        int y = 32 + row % 4 * 52;
+        var lb = new Label { Text = label, Location = new Point(x + 14, y), Size = new Size(190, 32),
+            TextAlign = ContentAlignment.MiddleLeft };
+        tb.Location = new Point(x + 208, y);
+        tb.Size = new Size(140, 30);
         parent.Controls.Add(lb);
         parent.Controls.Add(tb);
     }
@@ -116,9 +122,9 @@ public sealed class ProgramEditForm : Form
     {
         using var dlg = new OpenFileDialog
         {
-            Title = "Load spec file...",
+            Title = "Mở tệp chương trình phép thử",
             InitialDirectory = _programDir,
-            Filter = "csv File(.csv)|*.csv|All files(*.*)|*.*"
+            Filter = "Tệp chương trình (*.csv)|*.csv|Tất cả tệp (*.*)|*.*"
         };
         if (dlg.ShowDialog() != DialogResult.OK) return;
         _currentPath = dlg.FileName;
@@ -132,7 +138,7 @@ public sealed class ProgramEditForm : Form
         TestProgram? p = TestProgram.Load(path);
         if (p is null)
         {
-            MessageBox.Show("File chương trình không hợp lệ (cần tối thiểu 16 dòng).", "Lỗi",
+            VietnameseMessageBox.Show("Tệp chương trình không hợp lệ (cần tối thiểu 16 dòng).", "Lỗi",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -161,7 +167,7 @@ public sealed class ProgramEditForm : Form
         string name = _tbName.Text.Trim();
         if (name.Length == 0)
         {
-            MessageBox.Show("Nhập tên chương trình trước khi lưu.", "Lỗi",
+            VietnameseMessageBox.Show("Nhập tên chương trình trước khi lưu.", "Lỗi",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -180,7 +186,7 @@ public sealed class ProgramEditForm : Form
         p.Save(path);
         _currentPath = path;
         SavedPath = path;
-        MessageBox.Show($"Đã lưu chương trình:\n{path}", "Thông báo",
+        VietnameseMessageBox.Show($"Đã lưu chương trình:\n{path}", "Thông báo",
                         MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 

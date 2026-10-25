@@ -28,8 +28,8 @@ public sealed class PassRateBarChart : Control
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                  ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         BackColor = Color.White;
-        Font = new Font("Segoe UI", 8F);
-        Padding = new Padding(42, 18, 10, 26);
+        Font = new Font("Segoe UI", 11F);
+        Padding = new Padding(56, 28, 16, 36);
     }
 
     /// <summary>Cập nhật 3 cột TOTAL / PASS / FAIL của ca hiện tại.</summary>
@@ -60,7 +60,7 @@ public sealed class PassRateBarChart : Control
         if (max > vmax * 0.9) vmax += step;   // thêm 1 khoảng cho nhãn #VALY
         int ticks = vmax / step;
 
-        using Font axisFont = new("Consolas", 7.5F);
+        using Font axisFont = new("Consolas", 9.5F);
         using var axisBrush = new SolidBrush(AxisColor);
         using var gridPen = new Pen(GridColor);
 
@@ -76,14 +76,14 @@ public sealed class PassRateBarChart : Control
         }
 
         // ---- 3 cột dữ liệu ----
-        string[] names = { "TOTAL", "PASS", "FAIL" };
+        string[] names = { "Tổng", "PASS", "FAIL" };
         int[] values = { _total, _pass, _fail };
         Color[] colors = { TotalColor, PassColor, FailColor };
 
         float slot = plot.Width / 3f;
-        float barW = Math.Max(10, Math.Min(72f, slot * 0.52f));
-        using Font valueFont = new("Segoe UI", 9.5F, FontStyle.Bold);
-        using Font labelFont = new("Segoe UI", 8F, FontStyle.Bold);
+        float barW = Math.Max(10, Math.Min(96f * DeviceDpi / 96F, slot * 0.6f));
+        using Font valueFont = new("Segoe UI", 14F, FontStyle.Bold);
+        using Font labelFont = new("Segoe UI", 11F, FontStyle.Bold);
 
         for (int i = 0; i < 3; i++)
         {
@@ -180,7 +180,7 @@ public sealed class YieldPieChart : Control
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                  ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         BackColor = Color.White;
-        Font = new Font("Segoe UI", 8F);
+        Font = new Font("Segoe UI", 11F);
         Padding = new Padding(10, 8, 8, 8);
     }
 
@@ -202,16 +202,21 @@ public sealed class YieldPieChart : Control
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
         Padding p = Padding;
-        const float legendWidth = 118f;
+        float scale = DeviceDpi / 96F;
+        float legendWidth = 142f * scale;
         float availableW = Width - p.Left - p.Right;
-        float size = Math.Min(Height - p.Top - p.Bottom,
-                              availableW - legendWidth - 16f);
+        bool legendBelow = availableW < 300 * scale;
+        float availableH = Height - p.Top - p.Bottom;
+        float size = legendBelow
+            ? Math.Min(availableH - 60 * scale, availableW)
+            : Math.Min(availableH, availableW - legendWidth - 16f * scale);
         size = Math.Max(40f, size);
 
-        // Căn giữa cả cụm "bánh tròn + chú giải" trong cột 40% (tránh lệch trái).
-        float startX = p.Left + Math.Max(0, (availableW - (size + 16f + legendWidth)) / 2);
+        // Chú giải chuyển xuống dưới khi cột hẹp để giữ bánh tròn đủ lớn.
+        float groupWidth = legendBelow ? size : size + 16f * scale + legendWidth;
+        float startX = p.Left + Math.Max(0, (availableW - groupWidth) / 2);
         RectangleF pie = new(startX,
-            p.Top + ((Height - p.Top - p.Bottom) - size) / 2, size, size);
+            p.Top + (availableH - size - (legendBelow ? 60 * scale : 0)) / 2, size, size);
 
         using var passBrush = new SolidBrush(PassColor);
         using var failBrush = new SolidBrush(FailColor);
@@ -223,7 +228,7 @@ public sealed class YieldPieChart : Control
             using var empty = new SolidBrush(EmptyColor);
             g.FillEllipse(empty, pie);
             using var gray = new SolidBrush(Color.FromArgb(148, 163, 184));
-            DrawCentered(g, "Chưa có dữ liệu", pie, gray, 8F);
+            DrawCentered(g, "Chưa có dữ liệu", pie, gray, 10F);
         }
         else
         {
@@ -242,19 +247,32 @@ public sealed class YieldPieChart : Control
         }
 
         // ---- chú giải: PASS / FAIL / FPY / TOTAL ----
-        float lx = pie.Right + 16;
-        float ly = pie.Top + Math.Max(0, (size - 96) / 2);
-        using var labelFont = new Font("Segoe UI", 8F);
-        using var boldFont = new Font("Segoe UI", 8.5F, FontStyle.Bold);
+        float lx = legendBelow ? p.Left + 4 * scale : pie.Right + 16 * scale;
+        float ly = legendBelow ? pie.Bottom + 8 * scale : pie.Top + Math.Max(0, (size - 112 * scale) / 2);
+        using var labelFont = new Font("Segoe UI", 10F);
+        using var boldFont = new Font("Segoe UI", 11F, FontStyle.Bold);
 
-        g.FillRectangle(passBrush, lx, ly + 2, 12, 12);
-        g.DrawString($"PASS  {_pass}", boldFont, Brushes.Black, lx + 17, ly);
-        g.FillRectangle(failBrush, lx, ly + 28, 12, 12);
-        g.DrawString($"FAIL  {_fail}", boldFont, Brushes.Black, lx + 17, ly + 26);
+        if (legendBelow)
+        {
+            float secondX = p.Left + availableW / 2;
+            g.FillRectangle(passBrush, lx, ly + 4 * scale, 12 * scale, 12 * scale);
+            g.DrawString($"PASS {_pass}", boldFont, Brushes.Black, lx + 17 * scale, ly);
+            g.FillRectangle(failBrush, secondX, ly + 4 * scale, 12 * scale, 12 * scale);
+            g.DrawString($"FAIL {_fail}", boldFont, Brushes.Black, secondX + 17 * scale, ly);
+            using var summaryBrush = new SolidBrush(TextColor);
+            g.DrawString($"Tỷ lệ {_fpy:0.0}%", labelFont, summaryBrush, lx, ly + 26 * scale);
+            g.DrawString($"Tổng {Total}", labelFont, summaryBrush, secondX, ly + 26 * scale);
+            return;
+        }
+
+        g.FillRectangle(passBrush, lx, ly + 2 * scale, 12 * scale, 12 * scale);
+        g.DrawString($"PASS  {_pass}", boldFont, Brushes.Black, lx + 17 * scale, ly);
+        g.FillRectangle(failBrush, lx, ly + 34 * scale, 12 * scale, 12 * scale);
+        g.DrawString($"FAIL  {_fail}", boldFont, Brushes.Black, lx + 17 * scale, ly + 32 * scale);
 
         using var textBrush = new SolidBrush(TextColor);
-        g.DrawString($"FPY   {_fpy:0.0}%", labelFont, textBrush, lx, ly + 56);
-        g.DrawString($"TOTAL {Total}", labelFont, textBrush, lx, ly + 76);
+        g.DrawString($"Tỷ lệ đạt {_fpy:0.0}%", labelFont, textBrush, lx, ly + 68 * scale);
+        g.DrawString($"Tổng {Total}", labelFont, textBrush, lx, ly + 94 * scale);
     }
 
     private static void DrawSlicePercent(Graphics g, RectangleF pie, int value, int total,
@@ -267,7 +285,7 @@ public sealed class YieldPieChart : Control
         float cy = pie.Top + pie.Height / 2f + (float)(Math.Sin(mid) * pie.Height * 0.32);
         string text = $"{value * 100.0 / total:0.#}%";
 
-        using Font font = new("Segoe UI", 9F, FontStyle.Bold);
+        using Font font = new("Segoe UI", 12F, FontStyle.Bold);
         SizeF sz = g.MeasureString(text, font);
         using var shadow = new SolidBrush(Color.FromArgb(90, 0, 0, 0));
         using var white = new SolidBrush(Color.White);
@@ -315,8 +333,8 @@ public sealed class CurrentTrendChart : Control
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint |
                  ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
         BackColor = Color.White;
-        Font = new Font("Segoe UI", 8F);
-        Padding = new Padding(52, 26, 14, 34);
+        Font = new Font("Segoe UI", 11F);
+        Padding = new Padding(64, 36, 16, 48);
     }
 
     /// <summary>Số cột hiện có (phép thử gần nhất) - dùng cho test headless.</summary>
@@ -366,22 +384,20 @@ public sealed class CurrentTrendChart : Control
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-        RectangleF plot = new(Padding.Left, Padding.Top,
+        float plotTop = Math.Max(Padding.Top, DrawLegend(g) + 8 * DeviceDpi / 96F);
+        RectangleF plot = new(Padding.Left, plotTop,
             Math.Max(10, Width - Padding.Left - Padding.Right),
-            Math.Max(10, Height - Padding.Top - Padding.Bottom));
-
-        // ---- chú giải nhỏ phía trên phải: PASS / FAIL / ngưỡng Hi ----
-        DrawLegend(g);
+            Math.Max(10, Height - plotTop - Padding.Bottom));
 
         if (_points.Count == 0)
         {
             using var gray = new SolidBrush(EmptyColor);
-            using Font f = new("Segoe UI", 9F, FontStyle.Bold);
-            string msg = "Chưa có dữ liệu - biểu đồ tự nạp từ báo cáo của ca khi mở app";
-            SizeF sz = g.MeasureString(msg, f);
-            g.DrawString(msg, f, gray,
-                plot.Left + (plot.Width - sz.Width) / 2,
-                plot.Top + (plot.Height - sz.Height) / 2);
+            using Font f = new("Segoe UI", 11F, FontStyle.Bold);
+            using var format = new StringFormat
+            {
+                Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center
+            };
+            g.DrawString("Chưa có dữ liệu dòng rò\nTự nạp báo cáo của ca hiện tại", f, gray, plot, format);
             return;
         }
 
@@ -390,7 +406,7 @@ public sealed class CurrentTrendChart : Control
         var (vmax, step) = ComputeScale(maxData, Math.Max(_hiSetMa, _lowSetMa));
         int ticks = (int)Math.Round(vmax / step);
 
-        using Font axisFont = new("Consolas", 7.5F);
+        using Font axisFont = new("Consolas", 9.5F);
         using var axisBrush = new SolidBrush(AxisColor);
         using var gridPen = new Pen(GridColor);
 
@@ -409,10 +425,10 @@ public sealed class CurrentTrendChart : Control
         // ---- 1 cột cho mỗi phép thử gần nhất ----
         int n = _points.Count;
         float slot = plot.Width / n;
-        float barW = Math.Max(1.5f, Math.Min(28f, slot * 0.68f));
-        using Font valueFont = new("Consolas", 6.5F, FontStyle.Bold);
-        using Font labelFont = new("Consolas", 7F);
-        int labelEvery = Math.Max(1, (int)Math.Ceiling(n / 12.0));
+        float barW = Math.Max(1.5f, Math.Min(36f, slot * 0.68f));
+        using Font valueFont = new("Consolas", 9F, FontStyle.Bold);
+        using Font labelFont = new("Consolas", 9F);
+        int labelEvery = Math.Max(1, (int)Math.Ceiling(n / Math.Max(1, plot.Width / (48 * DeviceDpi / 96F))));
 
         for (int i = 0; i < n; i++)
         {
@@ -460,8 +476,8 @@ public sealed class CurrentTrendChart : Control
             float hy = (float)(_hiSetMa / vmax * plot.Height);
             float yLine = plot.Bottom - hy;
             g.DrawLine(hiPen, plot.Left, yLine, plot.Right, yLine);
-            string hiTxt = $"Hi {_hiSetMa:0.###} mA";
-            using var hiFont = new Font("Consolas", 7F, FontStyle.Bold);
+            string hiTxt = $"Trên {_hiSetMa:0.###} mA";
+            using var hiFont = new Font("Consolas", 9F, FontStyle.Bold);
             SizeF hs = g.MeasureString(hiTxt, hiFont);
             using var hiBrush = new SolidBrush(FailColor);
             g.DrawString(hiTxt, hiFont, hiBrush,
@@ -472,8 +488,8 @@ public sealed class CurrentTrendChart : Control
             using var lowPen = new Pen(LowColor, 1.4f) { DashStyle = DashStyle.Dash };
             float ly = plot.Bottom - (float)(_lowSetMa / vmax * plot.Height);
             g.DrawLine(lowPen, plot.Left, ly, plot.Right, ly);
-            string lowTxt = $"Low {_lowSetMa:0.###} mA";
-            using var lowFont = new Font("Consolas", 7F);
+            string lowTxt = $"Dưới {_lowSetMa:0.###} mA";
+            using var lowFont = new Font("Consolas", 9F);
             SizeF ls = g.MeasureString(lowTxt, lowFont);
             using var lowBrush = new SolidBrush(LowColor);
             g.DrawString(lowTxt, lowFont, lowBrush, plot.Right - ls.Width - 2, ly + 2);
@@ -482,27 +498,47 @@ public sealed class CurrentTrendChart : Control
         // ---- trục đáy + nhãn trục X ----
         using var axisPen = new Pen(AxisColor);
         g.DrawLine(axisPen, plot.Left, plot.Bottom, plot.Right, plot.Bottom);
-        g.DrawString("Số thứ tự phép thử (No)", labelFont, axisBrush,
-            plot.Left + (plot.Width - 110) / 2, plot.Bottom + 18);
+        const string axisTitle = "Số thứ tự phép thử";
+        SizeF titleSize = g.MeasureString(axisTitle, labelFont);
+        g.DrawString(axisTitle, labelFont, axisBrush,
+            plot.Left + (plot.Width - titleSize.Width) / 2, plot.Bottom + 24);
     }
 
     /// <summary>Chú giải nhỏ phía trên: ô xanh PASS, ô đỏ FAIL, nét đứt Hi set.</summary>
-    private void DrawLegend(Graphics g)
+    private float DrawLegend(Graphics g)
     {
-        using Font f = new("Segoe UI", 7.5F);
+        using Font f = new("Segoe UI", 9F);
         using var text = new SolidBrush(AxisColor);
-        float x = Width - Padding.Right - 210;
-        float y = 5;
-        if (x < 4) return;
-
-        using (var b = new SolidBrush(PassColor)) g.FillRectangle(b, x, y + 2, 10, 10);
-        g.DrawString("PASS", f, text, x + 13, y);
-        using (var b = new SolidBrush(FailColor)) g.FillRectangle(b, x + 47, y + 2, 10, 10);
-        g.DrawString("FAIL", f, text, x + 60, y);
-        using (var b = new SolidBrush(ErrorColor)) g.FillRectangle(b, x + 94, y + 2, 10, 10);
-        g.DrawString("ERROR", f, text, x + 107, y);
-        using var pen = new Pen(FailColor, 1.4f) { DashStyle = DashStyle.Dash };
-        g.DrawLine(pen, x + 155, y + 7, x + 175, y + 7);
-        g.DrawString("Hi set", f, text, x + 178, y);
+        float scale = DeviceDpi / 96F;
+        var entries = new[] { ("PASS", PassColor), ("FAIL", FailColor), ("Lỗi", ErrorColor), ("Ngưỡng trên", FailColor) };
+        float marker = 14 * scale;
+        float gap = 10 * scale;
+        float totalWidth = entries.Sum(entry => g.MeasureString(entry.Item1, f).Width + marker + gap);
+        float x = Math.Max(4 * scale, Width - Padding.Right - totalWidth);
+        float y = 5 * scale;
+        float lineHeight = f.GetHeight(g) + 5 * scale;
+        for (int i = 0; i < entries.Length; i++)
+        {
+            var (label, color) = entries[i];
+            float itemWidth = g.MeasureString(label, f).Width + marker + gap;
+            if (x > 4 * scale && x + itemWidth > Width - Padding.Right)
+            {
+                x = 4 * scale;
+                y += lineHeight;
+            }
+            if (i == 3)
+            {
+                using var pen = new Pen(color, 1.4f) { DashStyle = DashStyle.Dash };
+                g.DrawLine(pen, x, y + 7 * scale, x + 11 * scale, y + 7 * scale);
+            }
+            else
+            {
+                using var brush = new SolidBrush(color);
+                g.FillRectangle(brush, x, y + 2 * scale, 10 * scale, 10 * scale);
+            }
+            g.DrawString(label, f, text, x + marker, y);
+            x += itemWidth;
+        }
+        return y + lineHeight;
     }
 }

@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using GPT9000_WinForms_TestSystem;
 using LicenseShared;
 
-internal static class Program
+internal static partial class Program
 {
     private static int _checks;
     private static void Check(bool value, string name)
@@ -16,6 +16,12 @@ internal static class Program
     [STAThread]
     private static void Main(string[] args)
     {
+        if (args.FirstOrDefault() == "--inspect")
+        {
+            InspectLicense(args.Skip(1).ToArray());
+            return;
+        }
+
         var now = DateTimeOffset.UtcNow;
         string fingerprint = MachineFingerprint.GetCurrent();
         string deviceId = MachineFingerprint.GetShortDeviceId();
@@ -105,7 +111,17 @@ internal static class Program
             var ecService = new OfficeLicenseService(file, "TEST", Convert.ToBase64String(secret), ecBundle);
             Check(ecService.Validate(OfficeLicenseFile.Create(LicenseCrypto.SerializeEnvelope(envelope),
                 "TEST", fingerprint, secret), now), "ECDSA signed license accepts");
+            p.ExtraWindows.Add(new(p.ExpiresAtUtc.AddHours(1), p.ExpiresAtUtc.AddHours(2)));
+            data = LicenseCodec.SerializePayload(p);
+            envelope.PayloadBase64 = Convert.ToBase64String(data);
+            envelope.SignatureBase64 = Convert.ToBase64String(ec.SignData(data, HashAlgorithmName.SHA256,
+                DSASignatureFormat.IeeeP1363FixedFieldConcatenation));
+            Check(ecService.Validate(OfficeLicenseFile.Create(LicenseCrypto.SerializeEnvelope(envelope),
+                "TEST", fingerprint, secret), p.ExtraWindows[0].StartUtc), "ECDSA v2 accepts a signed extra window");
         }
+
+        LicenseSelfTest.ExperienceTests.Run((name, ok, _) => Check(ok, name));
+        RunExperienceChecks(fingerprint, secret, rsa, keyId, bundle);
 
         var access = new SettingsAccess();
         Check(!access.Unlocked && !access.IsRoot, "settings start locked");
@@ -141,35 +157,7 @@ internal static class Program
 
         if (args.Length > 0)
         {
-            var production = new OfficeLicenseService();
-            bool validExport = production.Validate(File.ReadAllBytes(args[0]), DateTimeOffset.UtcNow);
-            Console.WriteLine("REAL EXPORT valid on this machine now: " + validExport);
-            string Resource(string name)
-            {
-                using var stream = typeof(MainForm).Assembly.GetManifestResourceStream("Licensing." + name)!;
-                using var reader = new StreamReader(stream);
-                return reader.ReadToEnd().Trim();
-            }
-            var vendorSecret = Convert.FromBase64String(Resource("office-secret.txt"));
-            bool opened = OfficeLicenseFile.TryOpenForThisMachine(File.ReadAllBytes(args[0]),
-                Resource("product-id.txt"), vendorSecret, out var json, out var error);
-            if (!opened)
-                foreach (string mac in MacAddress.GetCurrent())
-                {
-                    string binding = string.Join("-", Enumerable.Range(0, 6).Select(i => mac.Substring(i * 2, 2)));
-                    if (OfficeLicenseFile.TryOpen(File.ReadAllBytes(args[0]), Resource("product-id.txt"),
-                        binding, vendorSecret, out json, out error)) { opened = true; break; }
-                }
-            CryptographicOperations.ZeroMemory(vendorSecret);
-            Console.WriteLine("REAL EXPORT decrypt: " + opened + " " + error);
-            if (opened && LicenseCrypto.TryDeserializeEnvelope(json, out var env, out _) && env is not null)
-            {
-                var keys = PublicKeyBundleSerializer.Deserialize(Resource("public-keys.json"))!;
-                var key = keys.Keys.FirstOrDefault(k => k.KeyId.Equals(env.KeyId, StringComparison.OrdinalIgnoreCase));
-                if (key is not null && LicenseCrypto.Verify(env, key.PublicKeyPem, out var payload, out error))
-                    Console.WriteLine($"REAL EXPORT verified; Product={payload!.ProductId}; NotBefore={payload.NotBeforeUtc:O}; Expires={payload.ExpiresAtUtc:O}; Binding={payload.BindingMode}");
-                else Console.WriteLine("REAL EXPORT signature: " + (key is null ? "unknown key " + env.KeyId : error));
-            }
+            InspectLicense(args);
         }
         Console.WriteLine($"{_checks} checks passed.");
     }

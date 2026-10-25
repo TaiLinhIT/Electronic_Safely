@@ -75,6 +75,6 @@ public sealed class TestProgram
     public static TestProgram CreateDefault() => new();
 
     public override string ToString()
-        => $"{Name}: {VoltageKv} kV / {FreqHz} Hz / {TimeSec} s / ramp {RampSec} s / " +
-           $"Hi {HighSetMa} mA / Low {LowSetMa} mA";
+        => $"{Name}: {VoltageKv} kV / {FreqHz} Hz / {TimeSec} s / tăng áp {RampSec} s / " +
+           $"ngưỡng trên {HighSetMa} mA / ngưỡng dưới {LowSetMa} mA";
 }

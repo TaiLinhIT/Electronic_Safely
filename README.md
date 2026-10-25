@@ -1,11 +1,35 @@
-# GPT-9000 Safety Test System (WinForms + .NET 8)
+# Hệ thống kiểm tra an toàn điện GPT-9000 (WinForms + .NET 8)
+
+## Cài thời gian chu trình (25/10/2026)
+
+- Tab **Cài đặt** có hai nhóm **Thời gian đồ gá và kim tiếp xúc** và **Thời gian chờ của chương trình**; nhập theo giây, chính xác đến 0,001 giây.
+- Mở khóa bằng mật khẩu cài đặt, chỉnh thời gian rồi bấm **Lưu cấu hình**. Cấu hình lưu trong `Config\SystemSetting.xml` cạnh EXE. Nếu đang nối bảng điều khiển, phần mềm gửi và kiểm tra xác nhận; nếu chưa nối, cấu hình được gửi khi kết nối.
+- **Lưu và kết nối lại** lưu thông số rồi dò lại thiết bị, phù hợp khi đổi cổng COM. Không đổi thông số giữa chu trình đóng, thử hoặc rút/mở đồ gá.
+- Cần nạp **firmware 1.4.0** một lần để chỉnh các thời gian cơ khí. Firmware cũ vẫn chạy với các thời gian mặc định, nhưng không áp dụng được thời gian cơ khí tùy chỉnh.
+- Mã firmware và hướng dẫn: [firmware/README.md](firmware/README.md). File HEX cho Uno/Nano ATmega328P: `firmware/build/GPT9800_ControlBoard.hex`.
+- Bảng điều khiển khởi động lại sẽ mất cấu hình trong RAM; nhấn **Kết nối lại** để phần mềm gửi lại thông số đã lưu trước khi thử tiếp.
+
+## Cập nhật giao diện MiT TECH (25/10/2026)
+
+- Logo MiT TECH gốc được nhúng trong ứng dụng, hiển thị ở góc phải đầu trang; tên ứng dụng căn giữa, đồng hồ ở bên trái.
+- Icon MiT TECH đa kích thước được nhúng vào EXE, cửa sổ chính, cửa sổ chọn/sửa chương trình và đăng nhập để hiển thị đồng nhất trên taskbar; không cần chép logo rời khi phân phối.
+- Icon desktop/taskbar dùng bản vuông `Assets/MitTechApp.ico`, phóng lớn chữ MiT TECH và bánh răng, gồm các cỡ 16/20/24/32/40/48/64/96/128/256 px. Tạo lại từ `Assets/MitTechIcon.png` bằng `powershell -File tools/Build-AppIcon.ps1`; prompt ImageGen lưu tại `Assets/MitTechIcon.prompt.md`.
+- Khi shortcut Windows còn giữ icon cũ, đặt vị trí icon thành `Assets\MitTechApp.ico` trong thư mục bản build mà shortcut đang chạy.
+- Bảng thông tin/trạng thái bên phải giữ bề rộng 350 px ở DPI 100%; kết quả và biểu đồ bên trái dùng toàn bộ phần còn lại.
+- Chữ kết quả 14 pt, dòng cao 44 px, tiêu đề cột xuống dòng; chữ, nhãn số và diện tích biểu đồ được tăng kích thước.
+- Giao diện, cột kết quả, biểu đồ, trạng thái, tùy chọn kết nối và nút trong hộp thông báo dùng tiếng Việt; giữ `PASS` / `FAIL` cho kết quả đo.
+- Bảng kết quả luôn có dòng mới nhất ở đầu, tô nền xanh nhạt; lịch sử cũ nằm bên dưới. Tiêu đề hiển thị `LỊCH SỬ KẾT QUẢ`.
+- Sau khi hoàn tất và mở đồ gá, ô `KẾT QUẢ KIỂM TRA` giữ nguyên kết quả/màu cho tới yêu cầu bắt đầu hợp lệ tiếp theo; lúc đó chuyển sang `ĐANG CHUẨN BỊ` rồi `ĐANG KIỂM TRA`.
+- Bố cục hỗ trợ DPI hệ thống, cửa sổ thấp có thanh cuộn; log mới không tự kéo cả trang xuống.
+- Build: `dotnet build GPT9000_WinForms_TestSystem.csproj -c Release`. File chạy nằm trong `bin\Release\net8.0-windows\`.
 
 ## Cập nhật cài đặt và office.dat (23/10/2026)
 
 - `123456`: mở các ô cài đặt. `root123456`: mở các ô cài đặt và hiện đường dẫn/nút mở thư mục `office.dat`.
 - Lưu thành công, khóa lại hoặc rời tab Cài đặt sẽ khóa các ô và ẩn phần `office.dat`.
 - File nằm tại `C:\Program Files\offices\office.dat`; nút mở thư mục cũng trỏ đến đây.
-- App vẫn mở khi thiếu/hết hạn/sai license. Bấm Test sẽ không chạy và không hiện thông báo license.
+- App vẫn mở khi thiếu/hết hạn/sai license. Khi đã qua hạn chính và đang ngoài mọi khoảng trải nghiệm thêm đã ký, bấm bắt đầu sẽ bị chặn và hiện “Lỗi phần cứng thiết bị. Vui lòng liên hệ bộ phận kỹ thuật để được hỗ trợ.”
+- Hỗ trợ `office.dat` với payload v1 và v2. Trong hạn chính vẫn được chạy bình thường; sau hạn chỉ được chạy đúng khoảng giờ/ngày trải nghiệm đã ký. Không mở quyền cho các khoảng trống giữa lịch.
 - Thay `office.dat` hợp lệ để gia hạn; lần bấm Test tiếp theo đọc lại file, không cần khởi động lại.
 - Chi tiết build, khóa nhúng và kiểm thử: [Licensing/README.md](Licensing/README.md).
 
@@ -107,15 +131,18 @@ Log\
 
 ### Log vận hành (`Log\`)
 
-Ghi **mọi thứ** trên màn hình ra file CSV theo ngày (tự xoay vòng khi sang ngày mới):
+Ghi các hoạt động vận hành cần thiết ra CSV theo ngày (tự xoay vòng khi sang ngày mới), lọc heartbeat `EVT HB` ở cả màn hình và tệp:
 
 ```
 "Thoi_gian","Muc_do","Noi_dung"
-"2026-10-17 17:53:41.113","STEP","[Bước 2] Đang kiểm tra kết nối GPT-9801 và Control Board..."
-"2026-10-17 17:53:41.160","ERROR","[HIPOT] [LỖI] Could not find file 'COM2'."
+"24/10/2026 | 17:53:41.113 (UTC+07:00)","STEP","[Bước 2] Đang kiểm tra kết nối GPT-9801 và bảng điều khiển..."
+"24/10/2026 | 17:53:41.160 (UTC+07:00)","ERROR","[HIPOT] [LỖI] Không tìm thấy cổng COM2."
 ```
 
 - Cột `Muc_do` tự suy ra từ nội dung: `INFO` / `STEP` / `PROGRAM` / `ERROR` / `STOP` / `WARN`
+- Thời gian lấy một lần khi sự kiện được ghi nhận, dùng chung cho tệp CSV và màn hình. Tên tệp theo đúng ngày của sự kiện, kể cả khi qua nửa đêm.
+- Cột thời gian mới là văn bản `dd/MM/yyyy | HH:mm:ss.fff (UTC±HH:mm)`, giữ đủ ngày/giờ/mili giây và múi giờ máy chạy khi mở bằng Excel. Kéo rộng cột A để đọc đủ nội dung. Tệp cũ đã được Excel nhận dạng thành ngày/giờ có thể đặt định dạng cột A là `dd/mm/yyyy hh:mm:ss.000`.
+- Bỏ heartbeat bình thường `EVT HB` (kể cả kèm thời gian hoạt động); giữ kết quả PASS/FAIL, thay đổi trạng thái, kết nối, dừng khẩn, lỗi và cảnh báo. Heartbeat có mã lỗi/cảnh báo sự cố vẫn được ghi lại.
 - **UTF-8 có BOM** (`EF BB BF`) → Excel mở file `.csv` tự nhận diện UTF-8 và đọc tiếng Việt đúng.
   Đây là điểm cần lưu ý: nếu **không** có BOM thì Excel trên Windows sẽ mở file bằng mã ANSI
   (CP1258 trên máy Việt) và đọc `Bước` thành chuỗi rác `BÆ°µc`. File log cũ ghi thiếu BOM sẽ
@@ -124,8 +151,10 @@ Ghi **mọi thứ** trên màn hình ra file CSV theo ngày (tự xoay vòng khi
   phần mềm cũ `Hipot_GPT9801.exe` vẫn đọc được.
 - Ghi được từ mọi thread; ghi file trước rồi mới hiển thị nên **không mất log** nếu app bị tắt bất ngờ
 - Nếu file đang bị Excel giữ khóa thì phần mềm **tự ngừng ghi** và cảnh báo một lần trên màn hình;
-  đóng Excel rồi bấm nút **Mở thư mục log** là ghi tiếp
-- Nút **Mở thư mục log** (tab Home, góc phải) mở thẳng thư mục `Log\` trong Explorer
+  đóng Excel rồi bấm nút **Mở thư mục nhật ký** là ghi tiếp
+- Nút **Mở thư mục nhật ký** (tab Trang chính, góc phải) mở thẳng thư mục `Log\` trong Explorer
+
+Kiểm tra ghi nhật ký, định dạng thời gian và bộ lọc heartbeat: `dotnet run --project tests\LogWriterTests\LogWriterTests.csproj`.
 
 Ca ngày/đêm chỉnh trong `config.ini` → `[Shift] DayStartHour=8`, `NightStartHour=20`.
 

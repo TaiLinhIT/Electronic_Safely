@@ -26,6 +26,8 @@ public sealed class SystemSetting
     public string ComParityControl { get; set; } = "None";
     public int ComDataBitControl { get; set; } = 8;
 
+    public CycleTimingSettings Timing { get; set; } = new();
+
     public Parity ParityGPT => ParseParity(ComParityGPT);
     public Parity ParityControl => ParseParity(ComParityControl);
     public StopBits StopBitsGPT => ComStopBitGPT == 2 ? StopBits.Two : StopBits.One;
@@ -48,7 +50,12 @@ public sealed class SystemSetting
             {
                 var ser = new XmlSerializer(typeof(SystemSetting));
                 using var fs = File.OpenRead(path);
-                if (ser.Deserialize(fs) is SystemSetting s) return s;
+                if (ser.Deserialize(fs) is SystemSetting s)
+                {
+                    // Older configuration files have no Timing element.
+                    if (s.Timing is null || !s.Timing.TryValidate(out _)) s.Timing = new();
+                    return s;
+                }
             }
         }
         catch { /* file hỏng -> dùng mặc định */ }
@@ -57,10 +64,20 @@ public sealed class SystemSetting
 
     public void Save(string path)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var ser = new XmlSerializer(typeof(SystemSetting));
-        using var fs = File.Create(path);
-        ser.Serialize(fs, this);
+        if (!Timing.TryValidate(out string error)) throw new InvalidOperationException(error);
+        string fullPath = Path.GetFullPath(path);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        string tempPath = fullPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            using (var fs = File.Create(tempPath))
+            {
+                new XmlSerializer(typeof(SystemSetting)).Serialize(fs, this);
+                fs.Flush(flushToDisk: true);
+            }
+            File.Move(tempPath, fullPath, overwrite: true);
+        }
+        finally { if (File.Exists(tempPath)) File.Delete(tempPath); }
     }
 }
 

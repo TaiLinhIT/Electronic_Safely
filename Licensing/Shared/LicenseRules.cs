@@ -8,13 +8,18 @@ public static class LicenseRules
 {
     public static TimeSpan NotBeforeTolerance { get; set; } = TimeSpan.FromMinutes(5);
 
+    // Keep the original signature for clients already compiled against this assembly.
+    public static LicenseValidationResult Evaluate(LicensePayload payload, string expectedProductId,
+        string currentFingerprint, string currentDeviceId, DateTimeOffset nowUtc) =>
+        Evaluate(payload, expectedProductId, currentFingerprint, currentDeviceId, nowUtc, null);
+
     public static LicenseValidationResult Evaluate(
         LicensePayload payload,
         string expectedProductId,
         string currentFingerprint,
         string currentDeviceId,
         DateTimeOffset nowUtc,
-        IEnumerable<string>? currentMacAddresses = null)
+        IEnumerable<string>? currentMacAddresses)
     {
         ArgumentNullException.ThrowIfNull(payload);
 
@@ -48,7 +53,7 @@ public static class LicenseRules
                 $"This license becomes active on {payload.NotBeforeUtc:yyyy-MM-dd HH:mm} (UTC).",
                 payload);
 
-        if (!payload.IsPerpetual && nowUtc > payload.ExpiresAtUtc)
+        if (!payload.IsPerpetual && nowUtc > payload.ExpiresAtUtc && !ExtraExperience.Allows(payload.ExtraWindows, nowUtc))
             return LicenseValidationResult.Fail(
                 LicenseStatus.Expired,
                 $"This license expired on {payload.ExpiresAtUtc:yyyy-MM-dd HH:mm} (UTC).",
@@ -86,7 +91,12 @@ public static class LicenseRecordStatus
         if (record.Revoked) return LicenseRecordState.Revoked;
         if (nowUtc < record.NotBeforeUtc) return LicenseRecordState.Scheduled;
         if (record.LicenseType == LicenseType.Perpetual) return LicenseRecordState.Perpetual;
-        if (nowUtc > record.ExpiresAtUtc) return LicenseRecordState.Expired;
+        if (nowUtc > record.ExpiresAtUtc)
+        {
+            if (ExtraExperience.Allows(record.ExtraWindows, nowUtc)) return LicenseRecordState.Active;
+            if (record.ExtraWindows.Any(w => w.StartUtc > nowUtc)) return LicenseRecordState.Scheduled;
+            return LicenseRecordState.Expired;
+        }
         if (record.ExpiresAtUtc - nowUtc <= TimeSpan.FromDays(30)) return LicenseRecordState.Expiring;
         return LicenseRecordState.Active;
     }

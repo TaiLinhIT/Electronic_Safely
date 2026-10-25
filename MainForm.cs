@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.IO.Ports;
 using System.Text;
 using System.Windows.Forms;
@@ -14,6 +15,7 @@ public partial class MainForm : Form
     private static readonly Color ColorFail = Color.Firebrick;
     private static readonly Color ColorError = Color.DarkRed;
     private static readonly Color ColorOk = Color.ForestGreen;
+    private static readonly Color ColorLatestResult = Color.FromArgb(232, 243, 255);
 
     private readonly IniConfig _config;
     private readonly AppPaths _paths;
@@ -30,6 +32,8 @@ public partial class MainForm : Form
     private TestProgram _program = TestProgram.CreateDefault();
     private string _programFile = "program.csv";
     private bool _running;
+    private bool _retainTestResult;
+    private bool _showingStartError;
     private bool _stopRequested;
     private bool _hipotOk;
     private bool _cbOk;
@@ -76,7 +80,7 @@ public partial class MainForm : Form
         _report = new ReportWriter(_paths.ReportDir, _paths.PassrateDir, dayStart, nightStart);
         _logFile = new LogWriter(_paths.LogDir);
 
-        Text = _config.Get("Application", "AppName", "GPT-9000 Safety Test System");
+        Text = VietnameseText.GetApplicationName(_config.Get("Application", "AppName", VietnameseText.ApplicationName));
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(1100, 720);
         Size = new Size(1450, 900);
@@ -86,13 +90,13 @@ public partial class MainForm : Form
         // Nút bấm - START/STOP bằng cách bấm vào khung TEST RESULT (_status.Click dưới đây),
         // không còn nút START/STOP + checkbox như giao diện cũ.
         StyleHeader();
+        BuildHomeLayout();
         BuildGrid();
         BuildCharts();
         StyleLog();
         StyleStatus();
 
-        // Cửa sổ hẹp (<= ~1320 px) chia 50/50 để khối TEST INFORMATION không bị cắt;
-        // cửa sổ rộng giữ 62/38 cho lưới lịch sử kết quả rộng hơn.
+        // Giữ bảng thông tin gọn bên phải, dành phần còn lại cho kết quả và biểu đồ.
         Shown += (_, _) => ApplyHomeColumnSplit();
 
         _btnSelectProgram.Click += (_, _) => SelectProgram();
@@ -107,13 +111,12 @@ public partial class MainForm : Form
         {
             if (e.TabPage != _tabSettings && _settingsAccess.Unlocked)
             {
-                SaveSettings(silent: true);
-                LockSettings();
+                if (!SaveSettings(silent: true)) e.Cancel = true;
             }
         };
 
         // Bắt sự kiện từ hai thiết bị
-        _status.Click += (_, _) => { if (_running) RequestStop(); else StartTest(); };
+        _status.Click += (_, _) => { if (_running || _fixtureStartPending) RequestStop(); else StartTest(); };
 
         FormClosing += (_, _) => Shutdown();
 
@@ -124,18 +127,6 @@ public partial class MainForm : Form
         _clockTimer.Tick += (_, _) =>
             _lblClock.Text = $"{DateTime.Now:yyyy/MM/dd}\r\n{DateTime.Now:HH:mm:ss}";
         _clockTimer.Start();
-    }
-
-    private void StyleHeader()
-    {
-        _headerPanel.BackColor = Color.FromArgb(30, 58, 95);
-        _lblTitle.Text = "GPT-9000 Safety Test System";
-        _lblTitle.Font = new Font("Segoe UI", 20F, FontStyle.Bold);
-        _lblTitle.ForeColor = Color.White;
-        _lblLogo.Text = "HAN";
-        _lblLogo.Font = new Font("Segoe UI", 24F, FontStyle.Bold);
-        _lblLogo.ForeColor = Color.White;
-        _lblLogo.BackColor = Color.FromArgb(0, 115, 170);
     }
 
     private void BuildGrid()
@@ -150,14 +141,18 @@ public partial class MainForm : Form
         _grid.BorderStyle = BorderStyle.None;
         _grid.RowHeadersVisible = false;
         // Font to + row cao để đọc được kết quả từ xa - mỗi dòng là MỘT phép thử.
-        _grid.Font = new Font("Segoe UI", 11F);
-        _grid.RowTemplate.Height = 34;
+        _grid.Font = new Font("Segoe UI", 14F);
+        _grid.RowTemplate.Height = (int)(44 * DeviceDpi / 96F);
+        _grid.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+        _grid.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;
+        _grid.ColumnHeadersHeight = (int)(56 * DeviceDpi / 96F);
         _grid.ColumnHeadersDefaultCellStyle = new DataGridViewCellStyle
         {
             BackColor = Color.FromArgb(30, 58, 95),
             ForeColor = Color.White,
-            Font = new Font("Segoe UI", 9F, FontStyle.Bold),
-            Alignment = DataGridViewContentAlignment.MiddleCenter
+            Font = new Font("Segoe UI", 10F, FontStyle.Bold),
+            Alignment = DataGridViewContentAlignment.MiddleCenter,
+            WrapMode = DataGridViewTriState.True
         };
         _grid.EnableHeadersVisualStyles = false;
         _grid.GridColor = Color.FromArgb(226, 232, 240);
@@ -171,7 +166,22 @@ public partial class MainForm : Form
             "Hi set (mA)", "Low set (mA)", "Voltage result (kV)", "Current result (mA)",
             "Time measure (S)", "Result"
         };
-        foreach (string c in cols) _grid.Columns.Add(c, c);
+        string[] headers =
+        {
+            "Chương trình", "Điện áp thử (kV)", "Tần số (Hz)", "Thời gian thử (s)",
+            "Thời gian tăng áp (s)", "Dòng tham chiếu (mA)", "Ngưỡng trên (mA)", "Ngưỡng dưới (mA)",
+            "Điện áp đo (kV)", "Dòng điện đo (mA)", "Thời gian đo (s)", "Kết quả"
+        };
+        for (int i = 0; i < cols.Length; i++) _grid.Columns.Add(cols[i], headers[i]);
+        foreach (DataGridViewColumn column in _grid.Columns)
+        {
+            column.MinimumWidth = 74;
+            column.SortMode = DataGridViewColumnSortMode.NotSortable;
+        }
+        _grid.Columns[0].DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
+        _grid.Columns[0].FillWeight = 115;
+        _grid.Columns[8].FillWeight = 120;
+        _grid.Columns[9].FillWeight = 120;
         _gridPanel.Controls.Add(_grid);
     }
 
@@ -186,6 +196,8 @@ public partial class MainForm : Form
     /// </summary>
     private void BuildCharts()
     {
+        foreach (Control chart in new Control[] { _chartPassRate, _chartPie, _chartTrend })
+            ScaleDashboard(chart, DeviceDpi / 96F);
         _chartPassRate.Dock = DockStyle.Fill;
         _chartPie.Dock = DockStyle.Fill;
         _chartTrend.Dock = DockStyle.Fill;
@@ -229,6 +241,7 @@ public partial class MainForm : Form
         _status.TextAlign = ContentAlignment.MiddleCenter;
         _status.Cursor = Cursors.Hand;
         _status.BorderStyle = BorderStyle.FixedSingle;
+        _status.SizeChanged += (_, _) => FitStatusFont();
     }
 
     private async void MainForm_Load(object? sender, EventArgs e)
@@ -241,26 +254,27 @@ public partial class MainForm : Form
     }
 
     /// <summary>
-    /// Chia lại 2 cột tab Home theo bề rộng cửa sổ: TEST INFORMATION đã dồn gọn
-    /// sang phải nên cột trái (lịch sử kết quả + biểu đồ) được tối đa không gian.
-    /// Cửa sổ >= 1420 px: 66/34; hẹp hơn: 56/44 (khối INFO ~470 px vẫn vừa).
+    /// Bảng bên phải rộng 350 px ở 100% DPI; cột trái nhận toàn bộ phần còn lại.
+    /// Tăng chiều cao theo cửa sổ, giữ cuộn dọc khi màn hình thấp.
     /// </summary>
     private void ApplyHomeColumnSplit()
     {
         if (_homeLayout is null || _homeLayout.ColumnStyles.Count < 2) return;
 
-        float left = _homeLayout.Width < 1420 ? 56F : 66F;
-        if (Math.Abs(_homeLayout.ColumnStyles[0].Width - left) < 0.1F) return;
-
-        _homeLayout.ColumnStyles[0].Width = left;
-        _homeLayout.ColumnStyles[1].Width = 100F - left;
-        _homeLayout.PerformLayout();
+        float scale = DeviceDpi / 96F;
+        _homeLayout.ColumnStyles[0].SizeType = SizeType.Percent;
+        _homeLayout.ColumnStyles[0].Width = 100F;
+        _homeLayout.ColumnStyles[1].SizeType = SizeType.Absolute;
+        _homeLayout.ColumnStyles[1].Width = 350F * scale;
+        _homeLayout.Height = Math.Max((int)(690 * scale),
+            _tabHome.ClientSize.Height - _tabHome.Padding.Vertical);
+        _homeLayout.RowStyles[2].Height = 116F * scale;
     }
 
     protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
     {
         if (keyData == Keys.F5 && !_running) { StartTest(); return true; }
-        if (keyData == Keys.Escape && _running) { RequestStop(); return true; }
+        if (keyData == Keys.Escape && (_running || _fixtureStartPending)) { RequestStop(); return true; }
         return base.ProcessCmdKey(ref msg, keyData);
     }
 
@@ -283,24 +297,24 @@ public partial class MainForm : Form
 
         if (!hipotOk || !cbOk)
         {
-            AddLog("[LỖI] Chưa kết nối đủ thiết bị - kiểm tra dây nối, driver và cổng COM.");
-            AddLog("       HIPOT dùng Config\\SystemSetting.xml [ComPortGPT], Control Board dùng [ComPortControl].");
+            AddLog("[LỖI] Chưa kết nối đủ thiết bị - kiểm tra dây nối, trình điều khiển và cổng COM.");
+            AddLog("       Máy thử dùng Config\\SystemSetting.xml [ComPortGPT], bảng điều khiển dùng [ComPortControl].");
             SetStatus("NO DEV", ColorError, "Không kết nối đủ thiết bị. Kiểm tra kết nối rồi chạy lại.");
             return;
         }
 
-        SetStatus("IDLE", ColorIdle, "Fixture sẵn sàng. Đặt unit vào fixture để bắt đầu.");
+        SetStatus("IDLE", ColorIdle, "Đồ gá sẵn sàng. Đặt sản phẩm vào đồ gá để bắt đầu.");
     }
 
     /// <summary>Nút "Kết nối lại" - dò lại cả hai thiết bị mà không cần khởi động lại app.</summary>
     private async Task ReconnectAsync()
     {
-        if (_running)
+        if (_running || _fixtureStartPending || _returningToIdle)
         {
             AddLog("[KẾT NỐI] Đang chạy phép thử - không dò lại được.");
             return;
         }
-        SaveSettings();
+        if (!SaveSettingsCore(silent: false, applyToConnectedBoard: false)) return;
         await RunStartupChecksAsync();
         if (_hipotOk && _cbOk)
             AddLog("[KẾT NỐI] Dò lại thành công cả hai thiết bị.");
@@ -327,6 +341,7 @@ public partial class MainForm : Form
         // (giao thức cũ của Hipot_GPT9801).
         _arduino.Send("EVENTS ON", 800);
         _arduino.Send("*R", 800);
+        if (_fixtureMode) ApplyBoardTimings(_setting.Timing);
         StartPolling();
     }
 
@@ -345,15 +360,15 @@ public partial class MainForm : Form
         _hipotOk = ok;
         if (ok)
         {
-            AddLog($"[HIPOT] [OK] {_hipot.PortName} -> {_hipot.Idn}");
-            SetLinkState(_valHipot, $"{_hipot.PortName} OK", ColorOk);
+            AddLog($"[HIPOT] [THÀNH CÔNG] {_hipot.PortName} -> {_hipot.Idn}");
+            SetLinkState(_valHipot, $"{_hipot.PortName} - Đã kết nối", ColorOk);
         }
         else
         {
             AddLog($"[HIPOT] [LỖI] {err}");
-            AddLog("       Gợi ý: đổi ComPortGPT / baud / parity / data bit trong Config\\SystemSetting.xml.");
+            AddLog("       Gợi ý: đổi cổng / tốc độ truyền / kiểm tra chẵn lẻ / số bit dữ liệu trong Config\\SystemSetting.xml.");
             AddLog("       Lưu ý bảng Arduino dùng cổng COM khác (ComPortControl) - đừng ghi lẫn.");
-            SetLinkState(_valHipot, "NOT CONNECTED", ColorError);
+            SetLinkState(_valHipot, "Chưa kết nối", ColorError);
         }
         return ok;
     }
@@ -369,6 +384,7 @@ public partial class MainForm : Form
     /// </summary>
     private bool ConnectControlBoard()
     {
+        _fixtureTimingReady = false;
         string port = _setting.ComPortControl.Trim();
         int baud = _setting.ComBaudrateControl;
         bool isAuto = port.Equals("AUTO", StringComparison.OrdinalIgnoreCase) || port.Length == 0;
@@ -385,7 +401,7 @@ public partial class MainForm : Form
             ok = _arduino.Connect(port, baud, out err);
             if (!ok)
             {
-                AddLog($"[CB] Cổng {port} không phản hồi ({err}) - quét lại toàn bộ cổng serial...");
+                AddLog($"[CB] Cổng {port} không phản hồi ({err}) - quét lại toàn bộ cổng nối tiếp...");
                 ok = _arduino.AutoConnect(baud, out _, out err);
             }
         }
@@ -400,16 +416,16 @@ public partial class MainForm : Form
                 try
                 {
                     _setting.Save(_paths.SettingFile);
-                    AddLog($"[CB] [OK] Đã ghim cổng {found} vào Config\\SystemSetting.xml " +
+                    AddLog($"[CB] [THÀNH CÔNG] Đã ghim cổng {found} vào Config\\SystemSetting.xml " +
                            "- lần mở sau mở thẳng, không phải quét nữa.");
                 }
                 catch (Exception ex)
                 {
-                    AddLog($"[CB] [WARN] Không ghi được ghim cổng: {ex.Message}");
+                    AddLog($"[CB] [CẢNH BÁO] Không ghi được ghim cổng: {ex.Message}");
                 }
             }
-            AddLog($"[CB] [OK] {found} - {_arduino.BoardId}");
-            AddLog($"[CB] [OK] Firmware: {_arduino.Firmware}");
+            AddLog($"[CB] [THÀNH CÔNG] {found} - {_arduino.BoardId}");
+            AddLog($"[CB] [THÀNH CÔNG] Phiên bản phần mềm điều khiển: {_arduino.Firmware}");
             ArduinoLink.Reply st = _arduino.SendCommand("STATUS?", 1500);
             if (st.Ok) AddLog($"[CB] Trạng thái: {st.Text}");
 
@@ -417,14 +433,15 @@ public partial class MainForm : Form
             // v1.3.0: STATUS? trả FIXTURE=/LOCK= (bản cũ là FIX=). Chấp nhận cả 3 để
             // phần mềm tự nhận diện chế độ fixture dù nâng cấp firmware từ bản cũ.
             _fixtureMode = (st.Ok && (st.Text.Contains("FIXTURE=") || st.Text.Contains("FIX="))) ||
+                           (_arduino.Firmware?.Contains("FW=1.4") == true) ||
                            (_arduino.Firmware?.Contains("FW=1.3") == true) ||
                            (_arduino.Firmware?.Contains("FW=1.2") == true);
             AddLog(_fixtureMode
-                ? "[CB] [OK] CHẾ ĐỘ FIXTURE TỰ ĐỘNG: START → xilanh đóng → pogo pin chạm unit → " +
+                ? "[CB] [THÀNH CÔNG] CHẾ ĐỘ ĐỒ GÁ TỰ ĐỘNG: bắt đầu → xilanh đóng → kim tiếp xúc chạm sản phẩm → " +
                   "tự phát áp → kết quả → xilanh rút lên."
-                : "[CB] [INFO] Chế độ thủ công (legacy): cảm biến nắp an toàn + cảm biến unit được kiểm " +
-                  "tại thời điểm bấm START.");
-            SetLinkState(_valCb, $"{found} OK", ColorOk);
+                : "[CB] [THÔNG TIN] Chế độ thủ công: cảm biến nắp an toàn + cảm biến sản phẩm được kiểm " +
+                  "tại thời điểm bấm bắt đầu.");
+            SetLinkState(_valCb, $"{found} - Đã kết nối", ColorOk);
         }
         else
         {
@@ -432,8 +449,8 @@ public partial class MainForm : Form
             AddLog($"[CB] [LỖI] {err}");
             if (isAuto)
                 AddLog("       Gợi ý: ghi rõ ComPortControl (vd COM6) vào Config\\SystemSetting.xml " +
-                       "để bỏ qua bước quét toàn bộ cổng serial.");
-            SetLinkState(_valCb, "NOT CONNECTED", ColorError);
+                       "để bỏ qua bước quét toàn bộ cổng nối tiếp.");
+            SetLinkState(_valCb, "Chưa kết nối", ColorError);
         }
         return ok;
     }
@@ -506,8 +523,8 @@ public partial class MainForm : Form
         }
         else if (line.Contains("*CANCEL#"))
         {
-            if (!_running && !_licenseAllowsTest) return;
-            AddLog("[CB] Nhận ABORT từ bảng điều khiển / nắp an toàn bị mở.");
+            if (!_running && !_licenseAllowsTest) { _fixtureStartPending = false; return; }
+            AddLog("[CB] Nhận yêu cầu dừng khẩn từ bảng điều khiển / nắp an toàn bị mở.");
             RequestStop(fromBoard: true);
         }
     }
@@ -516,6 +533,18 @@ public partial class MainForm : Form
     {
         if (IsDisposed) return;
         if (InvokeRequired) { BeginInvoke(new Action(() => OnBoardEvent(evt))); return; }
+        if (evt.StartsWith("OK BOOT", StringComparison.Ordinal))
+        {
+            _fixtureTimingReady = false;
+            _fixtureStartPending = false;
+            _timingStatus.Text = "Bảng điều khiển vừa khởi động lại. Kết nối lại để gửi thời gian đã lưu.";
+            _timingStatus.ForeColor = Color.DarkOrange;
+            AddLog("[CT] " + _timingStatus.Text);
+            return;
+        }
+        if (evt.Contains("CYCLE_CLOSING", StringComparison.OrdinalIgnoreCase) && !_running)
+            _fixtureStartPending = true;
+        if (evt.Contains("CYCLE_IDLE", StringComparison.OrdinalIgnoreCase)) _fixtureStartPending = false;
         if (!_running && !_licenseAllowsTest) return;
         AddLog($"[CB] {evt}");
         if (evt.Contains("INTERLOCK_OPEN", StringComparison.OrdinalIgnoreCase) ||
@@ -525,11 +554,11 @@ public partial class MainForm : Form
         {
             // Chỉ đổi trạng thái khi đang chạy phép thử; khi idle mở nắp là bình thường.
             if (_running)
-                SetStatus("STOP", ColorError, "An toàn kích hoạt - phép thử bị ngắt bởi Control Board.");
+                SetStatus("STOP", ColorError, "An toàn kích hoạt - phép thử bị ngắt bởi bảng điều khiển.");
             AddLog(evt.Contains("STROKE_TIMEOUT", StringComparison.OrdinalIgnoreCase)
                 ? "[CB] ⚠ XILANH KHÔNG ĐI HẾT HÀNH TRÌNH - đã cắt hết và rút về. " +
                   "Kiểm tra áp khí / van điện từ / xilanh bị kẹt TRƯỚC KHI thử tiếp."
-                : "[CB] Điều kiện an toàn bị vi phạm - luôn kiểm tra lại trước START.");
+                : "[CB] Điều kiện an toàn bị vi phạm - luôn kiểm tra lại trước khi bắt đầu.");
         }
     }
 
@@ -542,7 +571,7 @@ public partial class MainForm : Form
         if (line.Contains("InterLock", StringComparison.OrdinalIgnoreCase))
         {
             _stopRequested = true;
-            SetStatus("MACHINE ERROR", ColorError, "GPT-9801 báo InterLock - nắp an toàn chưa đóng.");
+            SetStatus("MACHINE ERROR", ColorError, "GPT-9801 báo lỗi liên động - nắp an toàn chưa đóng.");
         }
     }
 
@@ -583,18 +612,18 @@ public partial class MainForm : Form
 
     private static string DescribeFixState(string s) => s.ToUpperInvariant() switch
     {
-        "CLOSING"  => "FIXTURE ĐANG ĐÓNG (clamp đang khép lại)",
-        "POGO_OUT" => "POGO PIN ĐANG ĐẨY RA (tiếp cận unit)",
-        "ARMED"    => "ĐÃ KHÓA LIÊN ĐỘNG GPT-9800 - chờ PC cho phép phóng áp",
-        "TESTING"  => "RELAY HV ĐÃ NGẮN - GPT-9800 đang phóng áp vào unit",
-        "POGO_BACK" => "POGO PIN ĐANG RÚT VỀ",
-        "FIX_OPEN" => "FIXTURE ĐANG MỞ RA",
-        "PASS"     => "PASS - fixture đã mở",
-        "FAIL"     => "FAIL - fixture đã mở",
-        "ABORTED"  => "ĐÃ DỪNG KHẨN - fixture đang mở",
+        "CLOSING"  => "ĐỒ GÁ ĐANG ĐÓNG (kẹp đang khép lại)",
+        "POGO_OUT" => "KIM TIẾP XÚC ĐANG ĐẨY RA (tiếp cận sản phẩm)",
+        "ARMED"    => "ĐÃ KHÓA LIÊN ĐỘNG GPT-9800 - chờ máy tính cho phép phóng áp",
+        "TESTING"  => "RƠ-LE CAO ÁP ĐÃ ĐÓNG - GPT-9800 đang phóng áp vào sản phẩm",
+        "POGO_BACK" => "KIM TIẾP XÚC ĐANG RÚT VỀ",
+        "FIX_OPEN" => "ĐỒ GÁ ĐANG MỞ RA",
+        "PASS"     => "PASS - đồ gá đã mở",
+        "FAIL"     => "FAIL - đồ gá đã mở",
+        "ABORTED"  => "ĐÃ DỪNG KHẨN - đồ gá đang mở",
         "FAULT"    => "LỖI CƠ KHÍ - mọi van đã tắt, KHÔNG thử tiếp",
-        "IDLE"     => "SẴN SÀNG - fixture mở, chờ unit kế",
-        _ => s
+        "IDLE"     => "SẴN SÀNG - đồ gá mở, chờ sản phẩm kế tiếp",
+        _ => "Chưa xác định"
     };
 
     #endregion
@@ -625,7 +654,7 @@ public partial class MainForm : Form
         }
         if (!un.Equals("PRESENT", StringComparison.OrdinalIgnoreCase))
         {
-            AddLog("[Bước 4] Chưa đạt: không cảm nhận unit trên fixture (UNIT != PRESENT).");
+            AddLog("[Bước 4] Chưa đạt: chưa phát hiện sản phẩm trên đồ gá.");
             return false;
         }
         return true;
@@ -645,7 +674,7 @@ public partial class MainForm : Form
     {
         ArduinoLink.Reply r = _arduino.SendCommand("HV ARM", 1500);
         if (!r.Ok)
-            AddLog($"[LỖI] Board KHÔNG cho phép phóng áp: {r.Raw}");
+            AddLog($"[LỖI] Bảng điều khiển KHÔNG cho phép phóng áp: {r.Raw}");
         return r.Ok;
     }
 
@@ -658,16 +687,31 @@ public partial class MainForm : Form
     private async void StartTest(bool fromBoard = false)
     {
         if (_running) return;
-        _licenseAllowsTest = _license.CanStartTest();
-        if (!_licenseAllowsTest)
+        if (_returningToIdle || (!fromBoard && _fixtureStartPending))
         {
-            // A physical START may already have closed the fixture. Release it without
-            // arming HV, changing results, displaying a dialog or recording a failed test.
-            if (fromBoard && _arduino.IsOpen)
-                _arduino.SendCommand("TEST ABORT", 800);
+            if (fromBoard && _arduino.IsOpen) _arduino.SendCommand("TEST ABORT", 800);
             return;
         }
-        if (fromBoard) AddLog("[CB] Nhận START từ nút bấm trên bảng điều khiển.");
+        if (fromBoard) _fixtureStartPending = false;
+        _licenseAllowsTest = _license.CanStartTest(out bool expired);
+        if (!_licenseAllowsTest)
+        {
+            // Nhả đồ gá TRƯỚC thông báo vì START vật lý có thể đã đóng đồ gá.
+            // Không cấp cao áp hoặc tạo kết quả FAIL khi quyền START bị từ chối.
+            if (fromBoard && _arduino.IsOpen)
+                _arduino.SendCommand("TEST ABORT", 800);
+            if (expired) ReportExpiredStart();
+            return;
+        }
+        if (_fixtureMode && !_fixtureTimingReady)
+        {
+            if (fromBoard && _arduino.IsOpen) _arduino.SendCommand("TEST ABORT", 800);
+            _retainTestResult = false;
+            SetStatus("NOT READY", ColorError, "Bảng điều khiển chưa xác nhận thời gian. Kiểm tra trong tab Cài đặt.");
+            ShowStartError("Bảng điều khiển chưa xác nhận thời gian chu trình. Vào Cài đặt, kiểm tra phần mềm điều khiển rồi lưu hoặc kết nối lại.");
+            return;
+        }
+        if (fromBoard) AddLog("[CB] Nhận yêu cầu bắt đầu từ nút bấm trên bảng điều khiển.");
 
         if (!_hipotOk || !_hipot.IsOpen)
         {
@@ -677,15 +721,19 @@ public partial class MainForm : Form
             if (_arduino.IsOpen)
             {
                 ArduinoLink.Reply ab = _arduino.SendCommand("TEST ABORT", 800);
-                if (ab.Ok) AddLog($"[CB] Đã nhả fixture do thiếu hipot: {ab.Text}");
+                if (ab.Ok) AddLog($"[CB] Đã nhả đồ gá do thiếu máy thử: {ab.Text}");
             }
-            DialogResult dr = MessageBox.Show(
+            DialogResult dr = VietnameseMessageBox.Show(
                 "Chưa kết nối GPT-9801. Kiểm tra cáp RS-232 và cổng COM.\n\n" +
-                "Bấm Yes để dò lại kết nối ngay?",
-                "Không đủ điều kiện test", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                "Bấm Có để dò lại kết nối ngay?",
+                "Không đủ điều kiện kiểm tra", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
             if (dr == DialogResult.Yes) await ReconnectAsync();
             return;
         }
+
+        // Một yêu cầu START hợp lệ mới thay kết quả đang giữ bằng quy trình kế tiếp.
+        _retainTestResult = false;
+        SetStatus("PREPARING", ColorTesting, "Đang chuẩn bị phép thử tiếp theo...");
 
         if (fromBoard)
         {
@@ -700,21 +748,24 @@ public partial class MainForm : Form
             ArduinoLink.Reply fx = _arduino.SendCommand("FIX START", 2000);
             if (!fx.Ok)
             {
-                AddLog($"[LỖI] Board từ chối FIX START: {fx.Raw}");
-                SetStatus("FAIL", ColorFail, "Không khởi động được chu trình fixture.");
+                AddLog($"[LỖI] Bảng điều khiển từ chối khởi động đồ gá: {fx.Raw}");
+                SetStatus("FAIL", ColorFail, "Không khởi động được chu trình đồ gá.");
                 return;
             }
+            SetStatus("PREPARING", ColorTesting, "Đang đóng đồ gá và đưa kim tiếp xúc vào vị trí đo...");
+            _fixtureStartPending = true;
             return;                       // chu trình tự chạy tiếp khi nhận *TESTON#
         }
         else if (!CheckLegacyConditions())
         {
             // Chế độ thủ công: kiểm interlock + unit TRỰC TIẾP tại thời điểm START
             // (thay cho checkbox tick tay ở giao diện cũ).
-            SetStatus("NOT READY", ColorIdle, "Chưa đạt điều kiện an toàn - xem TEST LOG.");
+            SetStatus("NOT READY", ColorIdle, "Chưa đạt điều kiện an toàn - xem nhật ký kiểm tra.");
             return;
         }
 
         _running = true;
+        CycleTimingSettings timing = _setting.Timing;
         _stopRequested = false;
         _status.Cursor = Cursors.Default;
         _cycleWatch.Restart();
@@ -731,9 +782,9 @@ public partial class MainForm : Form
                 ArduinoLink.Reply start = _arduino.SendCommand("TEST START", 1500);
                 if (!start.Ok)
                 {
-                    AddLog($"[Bước 4] Board TỪ CHỐI bắt đầu: {start.Raw}");
-                    SetStatus("FAIL", ColorFail, "Board từ chối START: kiểm tra nắp an toàn / vị trí unit.");
-                    await Task.Delay(1200);
+                    AddLog($"[Bước 4] Bảng điều khiển TỪ CHỐI bắt đầu: {start.Raw}");
+                    SetStatus("FAIL", ColorFail, "Bảng điều khiển từ chối bắt đầu: kiểm tra nắp an toàn / vị trí sản phẩm.");
+                    await Task.Delay(timing.ErrorHoldMs);
                     return;
                 }
             }
@@ -742,10 +793,10 @@ public partial class MainForm : Form
             // DB-9 pin1-2 short) -> HV ARM mới đóng relay D4 cho GPT-9800 phóng áp.
             if (_fixtureMode && _arduino.IsOpen && !ArmHighVoltage())
             {
-                SetStatus("FAIL", ColorFail, "Board từ chối mở đường phóng áp - kiểm tra liên động.");
+                SetStatus("FAIL", ColorFail, "Bảng điều khiển từ chối mở đường phóng áp - kiểm tra liên động.");
                 if (_hipot.IsOpen) _hipot.StopTest(out _);
                 try { _arduino.SendCommand("TEST ABORT", 800); } catch { }
-                await Task.Delay(1200);
+                await Task.Delay(timing.ErrorHoldMs);
                 return;
             }
 
@@ -754,26 +805,26 @@ public partial class MainForm : Form
             // 1) Bật phép thử trên máy
             string startErr = "";
             bool started = await Task.Run(() => _hipot.StartTest(out startErr));
-            if (!started) throw new InvalidOperationException($"FUNC:TEST ON thất bại: {startErr}");
+            if (!started) throw new InvalidOperationException($"Không khởi động được phép thử: {startErr}");
 
             // 2) Chờ máy chạy xong (ramp + test time) rồi đọc kết quả thật.
             //    Không đọc MEAS? trước khi đã đủ thời lượng ramp+test, vì query
             //    "FUNC:TEST ON;:FUNC:TEST?" có thể trả "OK" ngay khi máy nhận lệnh.
-            int minMs = (int)((_program.RampSec + _program.TimeSec) * 1000) + 1500;
+            int minMs = (int)((_program.RampSec + _program.TimeSec) * 1000) + timing.MeasurementReadyDelayMs;
             string? doneLine = await WaitHipotAsync(
                 l => l.Contains("OK", StringComparison.OrdinalIgnoreCase),
-                _program.EstimatedCycleMs, minMs);
+                timing.CompletionTimeoutMs(_program), minMs);
             if (_stopRequested) { AddLog("[DỪNG] Phép thử bị dừng trước khi đọc kết quả."); return; }
-            if (doneLine is null) throw new TimeoutException("GPT-9801 không báo hoàn tất (timeout).");
+            if (doneLine is null) throw new TimeoutException("GPT-9801 không báo hoàn tất trong thời gian cho phép.");
 
-            HipotResult? res = await Task.Run(() => _hipot.ReadMeasurement(4000));
-            if (res is null) throw new TimeoutException("Không đọc được MEAS? từ GPT-9801.");
+            HipotResult? res = await Task.Run(() => _hipot.ReadMeasurement(timing.MeasurementReadTimeoutMs));
+            if (res is null) throw new TimeoutException("Không đọc được kết quả đo từ GPT-9801.");
 
             _cycleWatch.Stop();
 
             bool pass = res.IsPass && !res.IsError;
             SetStatus(pass ? "PASS" : "FAIL", pass ? ColorPass : ColorFail,
-                      pass ? "Phép thử đạt." : $"Phép thử không đạt ({res.Result}).");
+                      pass ? "Phép thử đạt." : $"Phép thử không đạt ({VietnameseText.Result(res.Result)}).");
             AddLog(pass
                 ? $"[KẾT QUẢ] PASS - {res.VoltageKv:F3} kV / {res.CurrentMa:F2} mA / {res.TimeSec:F2} s"
                 : $"[KẾT QUẢ] FAIL - {res.Result}");
@@ -807,6 +858,20 @@ public partial class MainForm : Form
         }
     }
 
+    private void ReportExpiredStart()
+    {
+        const string message = "Lỗi phần cứng thiết bị. Vui lòng liên hệ bộ phận kỹ thuật để được hỗ trợ.";
+        _retainTestResult = false;
+        SetStatus("MACHINE ERROR", ColorError, message);
+        if (_showingStartError) return;
+        _showingStartError = true;
+        try { ShowStartError(message); }
+        finally { _showingStartError = false; }
+    }
+
+    protected virtual void ShowStartError(string message)
+        => VietnameseMessageBox.Show(this, message, "Lỗi thiết bị", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
     /// <summary>
     /// Đợi phản hồi từ GPT-9801 theo lát 100 ms để có thể hủy giữa chừng.
     /// <paramref name="minMs"/> = thời lượng tối thiểu phải chờ (ramp + test time),
@@ -838,9 +903,11 @@ public partial class MainForm : Form
     /// Dừng phép thử khẩn cấp. Gửi FUNC:TEST OFF để cắt phát áp NGAY trên máy,
     /// đồng thời báo bảng điều khiển ngắt relay.
     /// </summary>
-    private void RequestStop(bool fromBoard = false)
+    private async void RequestStop(bool fromBoard = false)
     {
-        if (!_running) { AddLog("[DỪNG] Không có phép thử nào đang chạy."); return; }
+        if (!_running && !_fixtureStartPending) { AddLog("[DỪNG] Không có phép thử nào đang chạy."); return; }
+        bool preparing = _fixtureStartPending && !_running;
+        _fixtureStartPending = false;
         _stopRequested = true;
         AddLog($"[DỪNG] Yêu cầu dừng phép thử{(fromBoard ? " từ bảng điều khiển" : " bởi người vận hành")}...");
         if (_hipot.IsOpen) _hipot.StopTest(out _);
@@ -850,6 +917,8 @@ public partial class MainForm : Form
         // lần nữa sẽ chạy requestAbort() lần 2 -> retract() gọi lại và RESET strokeSinceMs,
         // làm thời gian rút bị cộng dồn vô hạn. Cùng mô-típ với lỗi gửi TEST START sau *TESTON#.
         if (_arduino.IsOpen && !fromBoard) _arduino.SendCommand("TEST ABORT", 800);
+        SetStatus("STOP", ColorError, "Phép thử đã dừng. Kiểm tra đồ gá trước khi bắt đầu lần tiếp theo.");
+        if (preparing) await ReturnToIdleAsync();
     }
 
     #endregion
@@ -878,7 +947,7 @@ public partial class MainForm : Form
         {
             AddLog($"[LỖI] Không lưu được báo cáo: {ex.Message}");
         }
-        AddLog($"[TỔNG] Cycle {cycleSeconds:F2} s | Pass {_pass} | Fail {_fail} | Total {_total}");
+        AddLog($"[TỔNG] Chu kỳ {cycleSeconds:F2} s | Pass {_pass} | Fail {_fail} | Tổng {_total}");
     }
 
     private void UpdateStats(double cycleSeconds)
@@ -900,39 +969,46 @@ public partial class MainForm : Form
 
     private async Task ReturnToIdleAsync()
     {
-        // KHÔNG gửi "RESET" ở đây. Lệnh *PASS# / *FAIL# đã làm board:
-        //   - tắt relay, bật đèn kết quả
-        //   - và BẮT ĐẦU rút xilanh (solUpOn)
-        // RESET gửi ngay sau đó sẽ gọi solBothOff() + lampsOff() -> dừng xilanh
-        // giữa chừng và tắt luôn đèn vừa bật, khi operator còn chưa thấy kết quả.
-        // Board tự về ST_IDLE sau khi rút pogo (POGO_BACK_MS) rồi mở fixture (FIX_OPEN_MS).
-        await Task.Delay(300);
-
-        if (_fixtureMode && _arduino.IsOpen)
+        _returningToIdle = true;
+        try
         {
-            // Chờ board rút xilanh xong (STATE=IDLE) rồi mới báo sẵn sàng: bấm START
-            // giữa chừng sẽ nhận "ERR FIX_NOT_IDLE" từ board.
-            bool idleNow = false;
-            for (int i = 0; i < 80; i++)              // tối đa ~8 s (POGO_BACK 1,2 s + FIX_OPEN 2,5 s + dự phòng)
-            {
-                await Task.Delay(100);
-                ArduinoLink.Reply fx = _arduino.SendCommand("FIX STATUS", 250);
-                if (fx.Ok && ArduinoLink.GetField(fx.Text, "STATE")
-                        .Equals("IDLE", StringComparison.OrdinalIgnoreCase))
-                {
-                    idleNow = true;
-                    break;
-                }
-            }
-            if (!idleNow)
-                AddLog("[WARN] Xilanh chưa về vị trí trên - chờ thêm trước khi START unit kế.");
-        }
+            CycleTimingSettings timing = _setting.Timing;
+            // KHÔNG gửi "RESET" ở đây. Lệnh *PASS# / *FAIL# đã làm board:
+            //   - tắt relay, bật đèn kết quả
+            //   - và BẮT ĐẦU rút xilanh (solUpOn)
+            // RESET gửi ngay sau đó sẽ gọi solBothOff() + lampsOff() -> dừng xilanh
+            // giữa chừng và tắt luôn đèn vừa bật, khi operator còn chưa thấy kết quả.
+            // Board tự về ST_IDLE sau khi rút pogo (POGO_BACK_MS) rồi mở fixture (FIX_OPEN_MS).
+            await Task.Delay(timing.PostCycleDelayMs);
 
-        SetStatus("IDLE", ColorIdle, _hipotOk
-            ? (_fixtureMode
-                ? "Đặt unit mới vào fixture rồi bấm START để chu trình tự chạy."
-                : "Fixture sẵn sàng. Đặt unit mới vào fixture để bắt đầu.")
-            : "Mất kết nối GPT-9801. Kiểm tra thiết bị.");
+            if (_fixtureMode && _arduino.IsOpen)
+            {
+                // Chờ board rút xilanh xong (STATE=IDLE) rồi mới báo sẵn sàng: bấm START
+                // giữa chừng sẽ nhận "ERR FIX_NOT_IDLE" từ board.
+                bool idleNow = false;
+                var wait = Stopwatch.StartNew();
+                while (wait.ElapsedMilliseconds < timing.FixtureReturnTimeoutMs && !IsDisposed)
+                {
+                    int remaining = timing.FixtureReturnTimeoutMs - (int)wait.ElapsedMilliseconds;
+                    await Task.Delay(Math.Min(100, remaining));
+                    remaining = timing.FixtureReturnTimeoutMs - (int)wait.ElapsedMilliseconds;
+                    if (remaining <= 0 || IsDisposed) break;
+                    ArduinoLink.Reply fx = _arduino.SendCommand("FIX STATUS", Math.Min(250, remaining));
+                    if (fx.Ok && ArduinoLink.GetField(fx.Text, "STATE")
+                            .Equals("IDLE", StringComparison.OrdinalIgnoreCase))
+                    {
+                        idleNow = true;
+                        break;
+                    }
+                }
+                if (!idleNow)
+                    AddLog("[CẢNH BÁO] Xilanh chưa về vị trí trên - chờ thêm trước khi bắt đầu sản phẩm kế tiếp.");
+            }
+
+            // Fixture về trạng thái chờ; TEST RESULT vẫn giữ kết quả và màu của lần vừa đo.
+            // Chỉ START tiếp theo mới chuyển hiển thị sang PREPARING / TESTING.
+        }
+        finally { _returningToIdle = false; }
     }
 
     private void Shutdown()
@@ -952,7 +1028,7 @@ public partial class MainForm : Form
 
     private void SelectProgram()
     {
-        if (_running) { MessageBox.Show("Đang chạy phép thử - không đổi chương trình.", "Thông báo",
+        if (_running) { VietnameseMessageBox.Show("Đang chạy phép thử - không đổi chương trình.", "Thông báo",
             MessageBoxButtons.OK, MessageBoxIcon.Information); return; }
         using var f = new OpenProgramForm(_paths.ProgramDir);
         f.ShowDialog(this);
@@ -976,10 +1052,13 @@ public partial class MainForm : Form
     {
         if (_status.IsDisposed) return;
         if (_status.InvokeRequired) { _status.BeginInvoke(new Action(() => SetStatus(text, color, hint))); return; }
-        _status.Text = text;
+        if (_retainTestResult && !_running) return;
+        _status.Text = VietnameseText.Status(text);
+        FitStatusFont();
         _status.BackColor = color;
         _status.Invalidate();
         if (hint != null) _lblStartHint.Text = hint;
+        _retainTestResult = text is "PASS" or "FAIL" or "ERROR" or "STOP" or "MACHINE ERROR";
     }
 
     /// <summary>Số dòng tối đa giữ trong lưới lịch sử (phép thử cũ nhất bị đẩy khỏi lưới).</summary>
@@ -988,13 +1067,11 @@ public partial class MainForm : Form
     /// <summary>
     /// Nạp lịch sử kết quả của ca hiện tại vào lưới (từ báo cáo CSV):
     /// mỗi dòng = 1 phép thử, MỚI NHẤT Ở TRÊN CÙNG, tối đa <see cref="GridHistoryMax"/> dòng.
-    /// Đồng thời hiển thị tóm tắt tham số chương trình trên tiêu đề lưới.
+    /// Tiêu đề chỉ nhận diện bảng; toàn bộ giá trị nằm trong từng dòng kết quả.
     /// </summary>
     private void LoadGridHistory()
     {
-        _lblTestItems.Text =
-            $"TEST RESULTS - {_programFile} | {_program}" +
-            $" | Hi {_program.HighSetMa} mA / Low {_program.LowSetMa} mA   (mới nhất ở trên cùng)";
+        _lblTestItems.Text = "LỊCH SỬ KẾT QUẢ";
         var rows = _report.ReadRecentRows(_program.Name, DateTime.Now, GridHistoryMax);
         void apply()
         {
@@ -1002,7 +1079,7 @@ public partial class MainForm : Form
             // CSV lưu từ cũ -> mới; đảo ngược để dòng mới nhất nằm trên cùng.
             for (int i = rows.Count - 1; i >= 0; i--)
                 AppendGridRow(rows[i]);
-            if (_grid.Rows.Count > 0) _grid.FirstDisplayedScrollingRowIndex = 0;
+            HighlightLatestResult();
         }
         if (_grid.InvokeRequired) _grid.BeginInvoke((Action)apply); else apply();
     }
@@ -1020,6 +1097,7 @@ public partial class MainForm : Form
             // Cũ nhất bị đẩy khỏi lưới khi vượt quá giới hạn (dữ liệu đầy đủ vẫn còn trong CSV).
             while (_grid.Rows.Count > GridHistoryMax)
                 _grid.Rows.RemoveAt(_grid.Rows.Count - 1);
+            HighlightLatestResult();
         }
         if (_grid.InvokeRequired) _grid.BeginInvoke((Action)apply); else apply();
     }
@@ -1031,6 +1109,20 @@ public partial class MainForm : Form
         FillGridRow(_grid.Rows[idx], row);
     }
 
+    /// <summary>Nền xanh nhạt luôn theo dòng mới nhất, giữ màu chữ PASS/FAIL của từng dòng.</summary>
+    private void HighlightLatestResult()
+    {
+        foreach (DataGridViewRow row in _grid.Rows)
+        {
+            bool latest = row.Index == 0;
+            row.DefaultCellStyle.BackColor = latest ? ColorLatestResult : Color.White;
+            row.DefaultCellStyle.SelectionBackColor = latest ? ColorLatestResult : Color.Empty;
+            row.DefaultCellStyle.SelectionForeColor = latest ? row.DefaultCellStyle.ForeColor : Color.Empty;
+        }
+        _grid.ClearSelection();
+        if (_grid.Rows.Count > 0) _grid.FirstDisplayedScrollingRowIndex = 0;
+    }
+
     /// <summary>Điền dữ liệu 1 dòng theo đúng 12 cột của báo cáo Hipot_GPT9801.</summary>
     private void FillGridRow(DataGridViewRow row, ReportRow r)
     {
@@ -1039,7 +1131,7 @@ public partial class MainForm : Form
         {
             r.Name, D(r.VTestKv), D(r.FreqHz), D(r.TestSec), D(r.RampSec), D(r.RefMa),
             D(r.HiMa), D(r.LowMa), r.VResultKv.ToString("F3"), r.IResultMa.ToString("F1"),
-            r.MeasureSec.ToString("F1"), r.Result
+            r.MeasureSec.ToString("F1"), VietnameseText.Result(r.Result)
         };
         for (int i = 0; i < vals.Length && i < row.Cells.Count; i++)
             row.Cells[i].Value = vals[i];
@@ -1065,13 +1157,13 @@ public partial class MainForm : Form
     {
         _tabSettings.BackColor = Color.FromArgb(248, 250, 252);
 
-        _grpHipot.Text = "MÁY HIPOT - GW Instek GPT-9801 (RS-232)";
+        _grpHipot.Text = "MÁY THỬ CAO ÁP - GW Instek GPT-9801 (RS-232)";
         _grpHipot.Location = new Point(20, 20);
         _grpHipot.Size = new Size(690, 100);
         _grpHipot.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
         BuildPortField(_grpHipot, _hipotPort, _btnScanHipot);
 
-        _grpCb.Text = "BẢNG ĐIỀU KHIỂN - Arduino Control Board";
+        _grpCb.Text = "BẢNG ĐIỀU KHIỂN - Arduino";
         _grpCb.Location = new Point(730, 20);
         _grpCb.Size = new Size(690, 100);
         _grpCb.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
@@ -1088,7 +1180,7 @@ public partial class MainForm : Form
         _btnSaveSettings.Size = new Size(180, 40);
         _btnSaveSettings.Click += (_, _) => SaveSettings();
 
-        _btnApplySettings.Text = "Áp dụng & Kết nối lại";
+        _btnApplySettings.Text = "Lưu và kết nối lại";
         _btnApplySettings.Location = new Point(215, 30);
         _btnApplySettings.Size = new Size(230, 40);
         _btnApplySettings.Click += async (_, _) => await ApplySettingsAndReconnectAsync();
@@ -1136,7 +1228,7 @@ public partial class MainForm : Form
         _grpSecurity.Controls.AddRange(new Control[]
         { lblPass, _settingsPassword, _btnUnlockSettings });
 
-        _grpOfficeLicense.Text = "office.dat";
+        _grpOfficeLicense.Text = "Tệp bản quyền office.dat";
         _grpOfficeLicense.Location = new Point(20, 380);
         _grpOfficeLicense.Size = new Size(1000, 125);
         _grpOfficeLicense.Visible = false;
@@ -1158,6 +1250,8 @@ public partial class MainForm : Form
 
         _tabSettings.Controls.AddRange(new Control[]
         { _grpHipot, _grpCb, _grpAction, _grpSecurity, _grpOfficeLicense });
+        BuildTimingSettings();
+        ArrangeSettingsLayout();
     }
 
     /// <summary>
@@ -1190,11 +1284,12 @@ public partial class MainForm : Form
 
     private void LoadSettingsToFields()
     {
-        _valApplication.Text = _config.Get("Application", "AppName", "GPT-9000 Safety Test System");
+        _valApplication.Text = Text;
         _valVersion.Text = _config.Get("Application", "Version", "1.0.0");
 
         SetCombo(_hipotPort, _setting.ComPortGPT);
         SetCombo(_cbPort, _setting.ComPortControl);
+        LoadTimingInputs();
 
         _settingsPassword.Clear();
         _settingsAccess.Lock();
@@ -1207,6 +1302,7 @@ public partial class MainForm : Form
     /// <summary>Đưa giá trị vào ComboBox, giữ nó trong danh sách gợi ý nếu chưa có.</summary>
     private static void SetCombo(ComboBox cb, string value)
     {
+        if (value.Length == 0 || value.Equals("AUTO", StringComparison.OrdinalIgnoreCase)) value = "Tự động";
         if (value.Length > 0 && !cb.Items.Contains(value)) cb.Items.Add(value);
         cb.Text = value;
     }
@@ -1215,32 +1311,52 @@ public partial class MainForm : Form
     /// Ghi các ô đang hiển thị vào <c>_setting</c> rồi lưu ra
     /// <c>Config\SystemSetting.xml</c> trong thư mục bin.
     /// </summary>
-    private bool SaveSettings(bool silent = false)
+    private bool SaveSettings(bool silent = false) => SaveSettingsCore(silent, applyToConnectedBoard: true);
+
+    private bool SaveSettingsCore(bool silent, bool applyToConnectedBoard)
     {
         if (!_settingsAccess.Unlocked) return true;
+        if (_running || _fixtureStartPending || _returningToIdle)
+            return SettingsError("Đang thực hiện chu trình. Chờ đồ gá về vị trí nghỉ rồi lưu cấu hình.", silent);
+        CycleTimingSettings timing = ReadTimingInputs();
+        if (!timing.TryValidate(out string timingError)) return SettingsError(timingError, silent);
+        if (applyToConnectedBoard && _arduino.IsOpen && _fixtureMode)
+        {
+            var applied = ApplyBoardTimings(timing);
+            if (!applied.Ready) return SettingsError(applied.Message, silent);
+        }
         // Chỉ Cổng COM sửa được trên UI; Baud/Parity/Data/Stop giữ nguyên giá trị
         // đã đọc từ file cấu hình khi mở phần mềm (115200 8N1 theo mặc định).
-        _setting.ComPortGPT = _hipotPort.Text.Trim();
-        _setting.ComPortControl = _cbPort.Text.Trim();
+        _setting.ComPortGPT = VietnameseText.PortCode(_hipotPort.Text);
+        _setting.ComPortControl = VietnameseText.PortCode(_cbPort.Text);
+        _setting.Timing = timing;
 
         try
         {
             _setting.Save(_paths.SettingFile);
+            if (!_arduino.IsOpen || !applyToConnectedBoard)
+            {
+                _fixtureTimingReady = false;
+                _timingStatus.Text = "Đã lưu trên máy tính; sẽ gửi thời gian khi kết nối bảng điều khiển.";
+                _timingStatus.ForeColor = Color.DarkOrange;
+            }
             LockSettings();
             if (!silent)
             {
-                AddLog($"[CT] Đã lưu cấu hình cổng serial: {_paths.SettingFile}");
+                AddLog($"[CT] Đã lưu cấu hình cổng nối tiếp: {_paths.SettingFile}");
                 AddLog($"[CT]   HIPOT : {Describe(_setting.ComPortGPT, _setting.ComBaudrateGPT, _setting.ComDataBitGPT, _setting.ComParityGPT, _setting.ComStopBitGPT)}");
-                AddLog($"[CT]   BOARD : {Describe(_setting.ComPortControl, _setting.ComBaudrateControl, _setting.ComDataBitControl, _setting.ComParityControl, _setting.ComStopBitControl)}");
+                AddLog($"[CT]   BẢNG ĐIỀU KHIỂN : {Describe(_setting.ComPortControl, _setting.ComBaudrateControl, _setting.ComDataBitControl, _setting.ComParityControl, _setting.ComStopBitControl)}");
+                _lblSetStatus.ForeColor = Color.ForestGreen;
                 _lblSetStatus.Text = $"Đã lưu cấu hình lúc {DateTime.Now:HH:mm:ss}";
             }
             return true;
         }
         catch (Exception ex)
         {
+            _fixtureTimingReady = false;
             AddLog($"[LỖI] Không lưu được file cấu hình: {ex.Message}");
             if (!silent)
-                MessageBox.Show($"Không lưu được file cấu hình:\n{_paths.SettingFile}\n\n{ex.Message}",
+                VietnameseMessageBox.Show($"Không lưu được tệp cấu hình:\n{_paths.SettingFile}\n\n{ex.Message}",
                                 "Lỗi", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return false;
         }
@@ -1249,7 +1365,8 @@ public partial class MainForm : Form
     private static string Describe(string port, int baud, int dataBits, string parity, int stopBits)
     {
         char p = string.IsNullOrEmpty(parity) ? '?' : char.ToUpperInvariant(parity[0]);
-        return $"{port} @ {baud} {dataBits}{p}{stopBits}";
+        string portLabel = port.Equals("AUTO", StringComparison.OrdinalIgnoreCase) || port.Length == 0 ? "Tự động" : port;
+        return $"{portLabel} @ {baud} {dataBits}{p}{stopBits}";
     }
 
     /// <summary>Nút "Áp dụng &amp; Kết nối lại": lưu file rồi dò/ghép nối lại cả hai thiết bị.</summary>
@@ -1257,11 +1374,10 @@ public partial class MainForm : Form
     {
         if (_running)
         {
-            MessageBox.Show("Đang chạy phép thử - không đổi cấu hình được.", "Thông báo",
+            VietnameseMessageBox.Show("Đang chạy phép thử - không đổi cấu hình được.", "Thông báo",
                             MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
-        if (!SaveSettings()) return;
         _btnApplySettings.Enabled = false;
         try { await ReconnectAsync(); }
         finally { DisableSettings(!_settingsAccess.Unlocked); }
@@ -1275,13 +1391,13 @@ public partial class MainForm : Form
         {
             string current = cb.Text;
             cb.Items.Clear();
-            cb.Items.Add("AUTO");
+            cb.Items.Add("Tự động");
             foreach (string p in ports) cb.Items.Add(p);
-            cb.Text = current.Length > 0 ? current : "AUTO";
+            SetCombo(cb, current);
         }
         AddLog(ports.Length == 0
-            ? "[CT] Không thấy cổng serial nào trên máy."
-            : "[CT] Đã quét cổng serial: " + string.Join(", ", ports));
+            ? "[CT] Không thấy cổng nối tiếp nào trên máy."
+            : "[CT] Đã quét cổng nối tiếp: " + string.Join(", ", ports));
     }
 
     /// <summary>Mở khóa / khóa lại các ô cấu hình bằng mật khẩu cài đặt.</summary>
@@ -1290,13 +1406,13 @@ public partial class MainForm : Form
         if (_settingsAccess.Unlocked && _settingsPassword.Text.Length == 0)
         {
             LockSettings();
-            AddLog("[CT] Đã khóa lại ô cài đặt cổng serial.");
+            AddLog("[CT] Đã khóa lại cài đặt.");
             return;
         }
 
         if (!_settingsAccess.Unlock(_settingsPassword.Text))
         {
-            MessageBox.Show("Sai mật khẩu cài đặt.", "Không đủ quyền",
+            VietnameseMessageBox.Show("Sai mật khẩu cài đặt.", "Không đủ quyền",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
             return;
         }
@@ -1304,11 +1420,12 @@ public partial class MainForm : Form
         _settingsPassword.Clear();
         DisableSettings(false);
         _grpOfficeLicense.Visible = _settingsAccess.IsRoot;
-        AddLog("[CT] Đã mở khóa ô cài đặt cổng serial.");
+        AddLog("[CT] Đã mở khóa cài đặt.");
     }
 
     private void DisableSettings(bool disabled)
     {
+        foreach (var input in _timingInputs.Values) input.Enabled = !disabled;
         foreach (Control c in new Control[]
                  {
                      _hipotPort, _cbPort,
@@ -1330,33 +1447,40 @@ public partial class MainForm : Form
 
     private void AddLog(string message)
     {
+        if (!LogWriter.ShouldLog(message)) return;
+        DateTimeOffset timestamp = DateTimeOffset.Now;
         // Ghi file TRƯỚC (thread-safe, không phụ thuộc UI) để không mất log nếu app bị đóng bất ngờ.
         // PHẢI tách phần hiển thị ra AppendToScreen, nếu không BeginInvoke sẽ gọi lại AddLog
         // trên UI thread và ghi dòng này vào file LẦN HAI.
-        string? fileErr = _logFile.Write(message);
+        string? fileErr = _logFile.Write(message, timestamp);
         if (fileErr is not null && !_logFileWarningShown)
         {
             _logFileWarningShown = true;
-            message += $"   <<{fileErr}; đóng Excel rồi bấm nút 'Mở thư mục log'>>";
+            message += $"   <<{fileErr}; đóng Excel rồi bấm nút 'Mở thư mục nhật ký'>>";
         }
 
         if (_log is null || _log.IsDisposed) return;
         if (_log.InvokeRequired)
         {
-            try { _log.BeginInvoke(new Action(() => AppendToScreen(message))); }
+            try { _log.BeginInvoke(new Action(() => AppendToScreen(message, timestamp))); }
             catch { /* form đang đóng */ }
             return;
         }
-        AppendToScreen(message);
+        AppendToScreen(message, timestamp);
     }
 
     /// <summary>Hiển thị một dòng log lên RichTextBox. Chỉ gọi trên UI thread.</summary>
-    private void AppendToScreen(string message)
+    private void AppendToScreen(string message, DateTimeOffset timestamp)
     {
         if (_log.IsDisposed) return;
-        _log.AppendText($"[{DateTime.Now:HH:mm:ss.fff}] {message}{Environment.NewLine}");
+        Point scroll = _tabHome.AutoScrollPosition;
+        string time = timestamp.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture);
+        _log.AppendText($"[{time}] {message}{Environment.NewLine}");
         _log.SelectionStart = _log.TextLength;
         _log.ScrollToCaret();
+        // Cuộn nội dung log mà không kéo cả dashboard xuống theo con trỏ log.
+        if (_tabHome.AutoScrollPosition != scroll)
+            _tabHome.AutoScrollPosition = new Point(-scroll.X, -scroll.Y);
     }
 
     /// <summary>Mở thư mục chứa log + báo cáo + passrate trong Explorer.</summary>
@@ -1364,7 +1488,7 @@ public partial class MainForm : Form
     {
         _logFile.Resume();                 // nếu vừa bị khóa bởi Excel thì cho ghi lại
         _logFileWarningShown = false;
-        OpenFolder(_paths.LogDir, "thư mục log");
+        OpenFolder(_paths.LogDir, "thư mục nhật ký");
     }
 
     /// <summary>Mở một thư mục trong Explorer.</summary>
@@ -1383,7 +1507,7 @@ public partial class MainForm : Form
         catch (Exception ex)
         {
             if (logPath) AddLog($"[LỖI] Không mở được {label}: {ex.Message}");
-            else MessageBox.Show(this, $"Không mở được thư mục: {ex.Message}", "Cài đặt",
+            else VietnameseMessageBox.Show(this, $"Không mở được thư mục: {ex.Message}", "Cài đặt",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }

@@ -5,6 +5,8 @@
 # Build output
 bin/
 obj/
+firmware/build/
+tests/FirmwareTimingTests/build/
 
 # User-specific files
 *.user
