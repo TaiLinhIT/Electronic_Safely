@@ -141,7 +141,18 @@ internal static partial class Program
             password.Text = "root123456"; Call("ToggleSettingsLock");
             Check(((SettingsAccess)Field("_settingsAccess")).IsRoot && ((Button)Field("_btnSaveSettings")).Enabled,
                 "form root unlock enables settings");
+            ((TextBox)Field("_officePath")).Text = file;
             Check((bool)Call("SaveSettings", true)!, "form settings saved");
+            var paths = (AppPaths)Field("_paths");
+            Check(SystemSetting.Load(paths.SettingFile).OfficeDatPath == file,
+                "selected file path persists in settings");
+            Check((string)typeof(OfficeLicenseService).GetField("_path", BindingFlags.Instance | BindingFlags.NonPublic)!
+                .GetValue(Field("_license"))! == file, "saving applies selected path to license reader");
+            password.Text = "123456"; Call("ToggleSettingsLock");
+            ((TextBox)Field("_officePath")).Text = "not-authorized.dat";
+            Call("SaveSettings", true);
+            Check(SystemSetting.Load(paths.SettingFile).OfficeDatPath == file,
+                "normal settings password cannot change license path");
             Check(!((SettingsAccess)Field("_settingsAccess")).Unlocked
                 && !((GroupBox)Field("_grpOfficeLicense")).Visible
                 && !((Button)Field("_btnSaveSettings")).Enabled, "save locks settings and hides office panel");
