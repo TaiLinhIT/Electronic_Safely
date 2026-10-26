@@ -1,8 +1,16 @@
 # Hệ thống kiểm tra an toàn điện GPT-9000 (WinForms + .NET 8)
 
+## Sửa kết nối và shortcut (26/10/2026)
+
+- Một lần chỉ chạy một lượt kết nối; các nút kết nối, sửa cài đặt và bắt đầu thử được khóa trong lúc dò cổng. Dừng polling và tạm ngắt handler cũ trước khi mở lại thiết bị để không lấy nhầm phản hồi giữa các lượt.
+- Nếu cổng máy đo đã đổi, phần mềm dò lại cổng có phản hồi GPT-98 và lưu cổng tìm được. Máy đo và bảng điều khiển không dò vào cổng của nhau. Tự động dò bỏ qua cổng Bluetooth `BthModem`; vẫn chọn được cổng Bluetooth cụ thể nếu hệ thống có dùng.
+- Thông báo phân biệt cổng không mở được với cổng đã mở nhưng không có phản hồi `*IDN?`. Cấu hình hiện tại là 115200, 8N1. Trên máy đo: **UTILITY → INTER**, chọn USB nếu cáp USB cắm trực tiếp, hoặc RS232 nếu dùng dây RS-232/bộ chuyển USB–RS232; RS232 đặt Baud 115200, USB cố định 115200. Nhấn **EDIT/SAVE** để lưu. Tham khảo [hướng dẫn GW Instek, trang 103–104 và 117–118](https://www.gwinstek.com/en-global/products/downloadSeriesDownNew/10502/802).
+- Trong thư mục bản build có `Tao-shortcut-MiTTECH.ps1`: chạy bằng PowerShell để tạo shortcut **MiT TECH - Kiem tra an toan dien**. Shortcut dùng bản sao icon theo mã nội dung trong hồ sơ người dùng và làm mới thông tin icon của Windows, tránh ảnh HAN cũ còn lưu theo đường dẫn EXE. Không xóa bộ nhớ đệm hay khởi động lại Explorer.
+
 ## Cài thời gian chu trình (25/10/2026)
 
-- Tab **Cài đặt** có hai nhóm **Thời gian đồ gá và kim tiếp xúc** và **Thời gian chờ của chương trình**; nhập theo giây, chính xác đến 0,001 giây.
+- Tab **Cài đặt** có một nhóm gọn với 4 thời gian chính: **Đóng đồ gá**, **Đẩy kim pogo**, **Rút kim pogo**, **Mở đồ gá**. Các ô được đánh số theo thứ tự chu trình, nhập theo giây, chính xác đến 0,001 giây.
+- Các thời gian chờ kỹ thuật dùng giá trị đang lưu và không hiện thành ô chỉnh. Phần mềm tự tăng ngân sách chờ đồ gá về nếu cần để đủ tổng thời gian rút kim + mở đồ gá + 0,5 giây; việc thu gọn giao diện không đặt lại các thông số cũ.
 - Mở khóa bằng mật khẩu cài đặt, chỉnh thời gian rồi bấm **Lưu cấu hình**. Cấu hình lưu trong `Config\SystemSetting.xml` cạnh EXE. Nếu đang nối bảng điều khiển, phần mềm gửi và kiểm tra xác nhận; nếu chưa nối, cấu hình được gửi khi kết nối.
 - **Lưu và kết nối lại** lưu thông số rồi dò lại thiết bị, phù hợp khi đổi cổng COM. Không đổi thông số giữa chu trình đóng, thử hoặc rút/mở đồ gá.
 - Cần nạp **firmware 1.4.0** một lần để chỉnh các thời gian cơ khí. Firmware cũ vẫn chạy với các thời gian mặc định, nhưng không áp dụng được thời gian cơ khí tùy chỉnh.

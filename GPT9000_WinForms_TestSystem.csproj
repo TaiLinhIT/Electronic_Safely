@@ -23,6 +23,11 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
+    <None Update="tools\Create-DesktopShortcut.ps1">
+      <TargetPath>Tao-shortcut-MiTTECH.ps1</TargetPath>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
     <None Update="firmware\build\GPT9800_ControlBoard.hex">
       <TargetPath>Firmware\GPT9800_ControlBoard.hex</TargetPath>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

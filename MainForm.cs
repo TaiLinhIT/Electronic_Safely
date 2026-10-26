@@ -283,32 +283,56 @@ public partial class MainForm : Form
     /// <summary>Bước 2 - dò và kết nối cả hai thiết bị, đăng ký sự kiện, nạp chương trình.</summary>
     private async Task RunStartupChecksAsync()
     {
-        _licenseAllowsTest = _license.CanStartTest();
-        AddLog("[Bước 2] Đang kiểm tra kết nối GPT-9801 và Control Board...");
-
-        LoadActiveProgram();
-
-        bool hipotOk = await Task.Run(ConnectHipot);
-        // Phải nạp tham số chương trình SAU khi đã mở cổng HIPOT.
-        if (hipotOk) await Task.Run(ApplyProgramToHipot);
-        bool cbOk = await Task.Run(ConnectControlBoard);
-
-        HookDeviceEvents(cbOk);
-
-        if (!hipotOk || !cbOk)
+        // All callers run on the UI thread. Take the gate before the first await
+        // so another click cannot disconnect/reopen ports used by this attempt.
+        if (_connecting || _shuttingDown || _running || _fixtureStartPending || _returningToIdle) return;
+        _connecting = true;
+        _pollTimer?.Stop();
+        _arduino.EventReceived -= OnBoardEvent;
+        _arduino.RawLineReceived -= OnBoardLine;
+        _hipot.EventReceived -= OnHipotEvent;
+        SetConnectionBusy(true);
+        try
         {
-            AddLog("[LỖI] Chưa kết nối đủ thiết bị - kiểm tra dây nối, trình điều khiển và cổng COM.");
-            AddLog("       Máy thử dùng Config\\SystemSetting.xml [ComPortGPT], bảng điều khiển dùng [ComPortControl].");
-            SetStatus("NO DEV", ColorError, "Không kết nối đủ thiết bị. Kiểm tra kết nối rồi chạy lại.");
-            return;
+            _licenseAllowsTest = _license.CanStartTest();
+            AddLog("[Bước 2] Đang kiểm tra kết nối GPT-9801 và Control Board...");
+            LoadActiveProgram();
+            _hipotOk = await Task.Run(ConnectHipot);
+            if (_shuttingDown) return;
+            if (_hipotOk) await Task.Run(ApplyProgramToHipot);
+            if (_shuttingDown) return;
+            _cbOk = await Task.Run(ConnectControlBoard);
+            if (_shuttingDown) return;
+            SetCombo(_hipotPort, _setting.ComPortGPT);
+            SetCombo(_cbPort, _setting.ComPortControl);
+            HookDeviceEvents(_cbOk);
+            if (!_hipotOk || !_cbOk)
+            {
+                AddLog("[LỖI] Chưa kết nối đủ thiết bị - kiểm tra dây nối, trình điều khiển và cổng COM.");
+                AddLog("       Máy thử dùng Config\\SystemSetting.xml [ComPortGPT], bảng điều khiển dùng [ComPortControl].");
+                SetStatus("NO DEV", ColorError, "Không kết nối đủ thiết bị. Kiểm tra kết nối rồi chạy lại.");
+                return;
+            }
+            SetStatus("IDLE", ColorIdle, "Đồ gá sẵn sàng. Đặt sản phẩm vào đồ gá để bắt đầu.");
         }
-
-        SetStatus("IDLE", ColorIdle, "Đồ gá sẵn sàng. Đặt sản phẩm vào đồ gá để bắt đầu.");
+        catch (Exception ex)
+        {
+            _hipotOk = false;
+            _cbOk = false;
+            AddLog("[KẾT NỐI] Không hoàn tất kết nối: " + ex.Message);
+            if (!_shuttingDown) SetStatus("NO DEV", ColorError, "Không hoàn tất kết nối. Kiểm tra nhật ký rồi kết nối lại.");
+        }
+        finally
+        {
+            _connecting = false;
+            if (!_shuttingDown && !IsDisposed) SetConnectionBusy(false);
+        }
     }
 
     /// <summary>Nút "Kết nối lại" - dò lại cả hai thiết bị mà không cần khởi động lại app.</summary>
     private async Task ReconnectAsync()
     {
+        if (_connecting || _shuttingDown) return;
         if (_running || _fixtureStartPending || _returningToIdle)
         {
             AddLog("[KẾT NỐI] Đang chạy phép thử - không dò lại được.");
@@ -346,20 +370,42 @@ public partial class MainForm : Form
     }
 
     /// <summary>Kết nối thật tới GPT-9801 qua RS-232, xác thực bằng *IDN?.</summary>
-    private bool ConnectHipot()
+    protected virtual bool ConnectHipot()
     {
         string port = _setting.ComPortGPT.Trim();
         int baud = _setting.ComBaudrateGPT;
         AddLog($"[HIPOT] Đang kết nối {Describe(port, baud, _setting.ComDataBitGPT, _setting.ComParityGPT, _setting.ComStopBitGPT)}...");
 
-        bool ok = port.Equals("AUTO", StringComparison.OrdinalIgnoreCase) || port.Length == 0
-            ? _hipot.AutoConnect(baud, _setting.ParityGPT, _setting.ComDataBitGPT, _setting.StopBitsGPT,
-                                 out string autoPort, out string err)
-            : _hipot.Connect(port, baud, _setting.ParityGPT, _setting.ComDataBitGPT, _setting.StopBitsGPT, out err);
+        bool isAuto = port.Equals("AUTO", StringComparison.OrdinalIgnoreCase) || port.Length == 0;
+        string[] excluded = new[] { _setting.ComPortControl, _arduino.PortName ?? "" };
+        string err;
+        bool ok;
+        if (isAuto)
+            ok = _hipot.AutoConnect(baud, _setting.ParityGPT, _setting.ComDataBitGPT, _setting.StopBitsGPT,
+                out _, out err, excludedPorts: excluded);
+        else
+        {
+            ok = _hipot.Connect(port, baud, _setting.ParityGPT, _setting.ComDataBitGPT, _setting.StopBitsGPT, out err);
+            if (!ok)
+            {
+                string directError = err;
+                AddLog($"[HIPOT] Cổng {port} không kết nối được ({err}) - dò lại cổng máy đo...");
+                ok = _hipot.AutoConnect(baud, _setting.ParityGPT, _setting.ComDataBitGPT, _setting.StopBitsGPT,
+                    out _, out err, excludedPorts: excluded.Append(port));
+                if (!ok) err = $"{port}: {directError} | {err}";
+            }
+        }
 
         _hipotOk = ok;
         if (ok)
         {
+            string found = _hipot.PortName ?? "";
+            if (found.Length > 0 && !found.Equals(_setting.ComPortGPT, StringComparison.OrdinalIgnoreCase))
+            {
+                _setting.ComPortGPT = found;
+                try { _setting.Save(_paths.SettingFile); AddLog($"[HIPOT] Đã lưu cổng máy đo {found} cho lần kết nối sau."); }
+                catch (Exception ex) { AddLog("[HIPOT] Không lưu được cổng máy đo: " + ex.Message); }
+            }
             AddLog($"[HIPOT] [THÀNH CÔNG] {_hipot.PortName} -> {_hipot.Idn}");
             SetLinkState(_valHipot, $"{_hipot.PortName} - Đã kết nối", ColorOk);
         }
@@ -382,7 +428,7 @@ public partial class MainForm : Form
     /// GHIM cổng đó vào <c>Config\SystemSetting.xml</c> để các lần mở sau mở thẳng,
     /// không phải quét. Nếu cổng đã ghim mà mất (unplug) thì quét lại một lần rồi ghim lại.
     /// </summary>
-    private bool ConnectControlBoard()
+    protected virtual bool ConnectControlBoard()
     {
         _fixtureTimingReady = false;
         string port = _setting.ComPortControl.Trim();
@@ -394,7 +440,8 @@ public partial class MainForm : Form
         bool ok;
         if (isAuto)
         {
-            ok = _arduino.AutoConnect(baud, out _, out err);
+            ok = _arduino.AutoConnect(baud, out _, out err,
+                excludedPorts: new[] { _hipot.PortName ?? "", _setting.ComPortGPT });
         }
         else
         {
@@ -402,7 +449,8 @@ public partial class MainForm : Form
             if (!ok)
             {
                 AddLog($"[CB] Cổng {port} không phản hồi ({err}) - quét lại toàn bộ cổng nối tiếp...");
-                ok = _arduino.AutoConnect(baud, out _, out err);
+                ok = _arduino.AutoConnect(baud, out _, out err,
+                    excludedPorts: new[] { port, _hipot.PortName ?? "", _setting.ComPortGPT });
             }
         }
 
@@ -686,6 +734,11 @@ public partial class MainForm : Form
     /// </summary>
     private async void StartTest(bool fromBoard = false)
     {
+        if (_connecting || _shuttingDown)
+        {
+            if (fromBoard && _arduino.IsOpen) _arduino.SendCommand("TEST ABORT", 800);
+            return;
+        }
         if (_running) return;
         if (_returningToIdle || (!fromBoard && _fixtureStartPending))
         {
@@ -1013,6 +1066,8 @@ public partial class MainForm : Form
 
     private void Shutdown()
     {
+        if (_shuttingDown) return;
+        _shuttingDown = true;
         _pollTimer?.Stop(); _pollTimer?.Dispose();
         _clockTimer?.Stop(); _clockTimer?.Dispose();
         try { if (_hipot.IsOpen) _hipot.StopTest(out _); } catch { }
@@ -1315,6 +1370,7 @@ public partial class MainForm : Form
 
     private bool SaveSettingsCore(bool silent, bool applyToConnectedBoard)
     {
+        if (_connecting) return SettingsError("Đang kết nối thiết bị. Chờ kết nối hoàn tất rồi lưu cấu hình.", silent);
         if (!_settingsAccess.Unlocked) return true;
         if (_running || _fixtureStartPending || _returningToIdle)
             return SettingsError("Đang thực hiện chu trình. Chờ đồ gá về vị trí nghỉ rồi lưu cấu hình.", silent);
@@ -1425,6 +1481,7 @@ public partial class MainForm : Form
 
     private void DisableSettings(bool disabled)
     {
+        disabled |= _connecting;
         foreach (var input in _timingInputs.Values) input.Enabled = !disabled;
         foreach (Control c in new Control[]
                  {
@@ -1447,6 +1504,7 @@ public partial class MainForm : Form
 
     private void AddLog(string message)
     {
+        if (_shuttingDown) return;
         if (!LogWriter.ShouldLog(message)) return;
         DateTimeOffset timestamp = DateTimeOffset.Now;
         // Ghi file TRƯỚC (thread-safe, không phụ thuộc UI) để không mất log nếu app bị đóng bất ngờ.

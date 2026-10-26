@@ -138,25 +138,38 @@ internal static class Program
         void Set(string name, object value) => typeof(MainForm).GetField(name, flags)!.SetValue(form, value);
         object? Call(string name, params object[] values) => typeof(MainForm).GetMethod(name, flags)!.Invoke(form, values);
         var paths = new AppPaths(Path.Combine(root, "ui")); paths.Ensure();
-        Set("_paths", paths); Set("_setting", new SystemSetting()); Call("LoadSettingsToFields");
+        var initial = new SystemSetting
+        {
+            Timing = new()
+            {
+                ArmWaitMs = 22000, MeasurementReadyDelayMs = 1750, TestCompletionMarginMs = 6500,
+                MeasurementReadTimeoutMs = 4500, ErrorHoldMs = 850, PostCycleDelayMs = 75
+            }
+        };
+        Set("_paths", paths); Set("_setting", initial); Call("LoadSettingsToFields");
         var inputs = (Dictionary<string, NumericUpDown>)Field("_timingInputs");
         var password = (TextBox)Field("_settingsPassword");
         void Unlock() { password.Text = "123456"; Call("ToggleSettingsLock"); }
         bool Save() => (bool)Call("SaveSettings", true)!;
         try
         {
-            Check(inputs.Count == 11 && inputs.Values.All(n => !n.Enabled), "all eleven timing fields start locked");
+            Check(inputs.Count == 4 && inputs.Values.All(n => !n.Enabled), "only the four mechanical timing fields are shown and start locked");
             Check(inputs[nameof(CycleTimingSettings.FixtureCloseMs)].Value == 2.5M
                 && inputs[nameof(CycleTimingSettings.PogoOutMs)].Value == 1.2M, "UI displays existing board defaults in seconds");
             Check(Save() && !File.Exists(paths.SettingFile), "locked settings cannot write timing values");
             Unlock();
             Check(inputs.Values.All(n => n.Enabled), "normal settings password unlocks timing fields");
             inputs[nameof(CycleTimingSettings.FixtureCloseMs)].Value = 2.755M;
-            inputs[nameof(CycleTimingSettings.PostCycleDelayMs)].Value = 0.075M;
+            inputs[nameof(CycleTimingSettings.PogoOutMs)].Value = 1.350M;
             Check(Save(), "offline timing changes save without opening serial ports");
             var saved = SystemSetting.Load(paths.SettingFile);
-            Check(saved.Timing.FixtureCloseMs == 2755 && saved.Timing.PostCycleDelayMs == 75,
+            Check(saved.Timing.FixtureCloseMs == 2755 && saved.Timing.PogoOutMs == 1350,
                 "UI seconds convert to exact millisecond values in the saved file");
+            Check(saved.Timing.ArmWaitMs == 22000 && saved.Timing.MeasurementReadyDelayMs == 1750
+                && saved.Timing.TestCompletionMarginMs == 6500 && saved.Timing.MeasurementReadTimeoutMs == 4500
+                && saved.Timing.ErrorHoldMs == 850 && saved.Timing.PostCycleDelayMs == 75
+                && saved.Timing.FixtureReturnTimeoutMs == 8000,
+                "saving the compact UI preserves the hidden technical timings from the existing configuration");
             Check(inputs.Values.All(n => !n.Enabled) && !((SettingsAccess)Field("_settingsAccess")).Unlocked,
                 "saving locks the timing fields again");
             Check(((Label)Field("_timingStatus")).Text.Contains("kết nối"), "offline save clearly indicates board synchronization is pending");
@@ -168,9 +181,16 @@ internal static class Program
                 Check(!Save() && File.ReadAllText(paths.SettingFile) == xml, "saving blocked during " + busy);
                 Set(busy, false);
             }
-            inputs[nameof(CycleTimingSettings.MeasurementReadyDelayMs)].Value = 8M;
-            Check(!Save() && File.ReadAllText(paths.SettingFile) == xml, "incompatible wait values stay unsaved in the UI");
-            inputs[nameof(CycleTimingSettings.MeasurementReadyDelayMs)].Value = 1.5M;
+            inputs[nameof(CycleTimingSettings.PogoBackMs)].Value = 7.5M;
+            inputs[nameof(CycleTimingSettings.FixtureOpenMs)].Value = 7.5M;
+            Check(Save(), "longer mechanical times save without requiring an advanced wait field");
+            saved = SystemSetting.Load(paths.SettingFile);
+            Check(saved.Timing.FixtureReturnTimeoutMs == 15500 && saved.Timing.TryValidate(out _),
+                "return timeout automatically allows both return strokes plus the safety margin");
+            Unlock();
+            inputs[nameof(CycleTimingSettings.PogoBackMs)].Value = 1.2M;
+            inputs[nameof(CycleTimingSettings.FixtureOpenMs)].Value = 2.5M;
+            Check(Save(), "shorter mechanical times keep an existing larger return wait budget");
             Call("LoadSettingsToFields");
             Check(inputs[nameof(CycleTimingSettings.FixtureCloseMs)].Value == 2.755M, "reload restores the previously saved timing");
 

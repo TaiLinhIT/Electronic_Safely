@@ -5,7 +5,7 @@ Firmware `GPT9800_ControlBoard/GPT9800_ControlBoard.ino`, phiên bản **1.4.0**
 ## Sử dụng
 
 1. Mở tab **Cài đặt**, nhập mật khẩu cài đặt để mở khóa.
-2. Chỉnh các ô thời gian theo **giây**; ví dụ `2,500` là 2,5 giây khi Windows dùng dấu phẩy thập phân.
+2. Chỉnh 4 ô **Đóng đồ gá**, **Đẩy kim pogo**, **Rút kim pogo**, **Mở đồ gá** theo **giây**; ví dụ `2,500` là 2,5 giây khi Windows dùng dấu phẩy thập phân.
 3. Nhấn **Lưu cấu hình**. Khi đang kết nối, bảng điều khiển phải xác nhận đủ các giá trị; dòng trạng thái sẽ báo đã áp dụng. Nếu chưa kết nối, phần mềm lưu và gửi khi kết nối lại.
 4. Khi đổi cổng COM, dùng **Lưu và kết nối lại** để lưu và kết nối thiết bị ở cổng mới.
 
@@ -17,6 +17,11 @@ Thông số lưu trong `Config/SystemSetting.xml` cạnh EXE, ở phần tử `T
 | Đẩy kim trước khi cho phép đo | 1,2 | 0,1–7,5 |
 | Rút kim trước khi mở đồ gá | 1,2 | 0,1–7,5 |
 | Mở đồ gá trước khi sẵn sàng | 2,5 | 0,1–7,5 |
+
+Các giá trị kỹ thuật bên dưới được giữ trong XML, không hiển thị thành ô chỉnh trên giao diện gọn:
+
+| Giá trị kỹ thuật | Mặc định | Phạm vi (giây) |
+|---|---:|---:|
 | Chờ máy thử xác nhận sẵn sàng | 30 | 1–30 |
 | Chờ thêm sau thử và tăng áp | 1,5 | 0–10 |
 | Dự phòng chờ máy thử hoàn tất | 5 | 1–60 |
@@ -25,7 +30,7 @@ Thông số lưu trong `Config/SystemSetting.xml` cạnh EXE, ở phần tử `T
 | Chờ sau khi kết thúc phép thử | 0,3 | 0–10 |
 | Chờ tối đa đồ gá về vị trí nghỉ | 8 | 1–30 |
 
-Chờ đồ gá về phải lớn hơn tổng thời gian rút kim và mở đồ gá ít nhất 0,5 giây. Dự phòng hoàn tất phải lớn hơn thời gian chờ thêm sau thử/tăng áp ít nhất 0,5 giây. Phần mềm báo rõ nếu các ô không tương thích và giữ cấu hình đã lưu trước đó.
+Phần mềm tự tăng ngân sách chờ đồ gá về nếu cần để đủ tổng thời gian rút kim + mở đồ gá + 0,5 giây; các thông số kỹ thuật khác được giữ nguyên khi lưu 4 ô trên. Dự phòng hoàn tất vẫn phải lớn hơn thời gian chờ thêm sau thử/tăng áp ít nhất 0,5 giây khi cấu hình bằng XML.
 
 ## Nạp và trạng thái tương thích
 

@@ -57,8 +57,8 @@ public sealed class ArduinoLink : IDisposable
                 DtrEnable = true,   // cần true: board AVR reset khi mở cổng
                 RtsEnable = true
             };
-            port.Open();
             _port = port;
+            port.Open();
             _stop = false;
             _reader = new Thread(ReadLoop) { IsBackground = true, Name = $"arduino-{portName}" };
             _reader.Start();
@@ -109,11 +109,13 @@ public sealed class ArduinoLink : IDisposable
     }
 
     /// <summary>Quét các cổng serial, trả về cổng đầu tiên trả lời đúng "OK PONG".</summary>
-    public bool AutoConnect(int baudRate, out string portName, out string error, int timeoutMs = 1200)
+    public bool AutoConnect(int baudRate, out string portName, out string error, int timeoutMs = 1200,
+        IEnumerable<string>? excludedPorts = null)
     {
         portName = "";
         error = "Không tìm thấy cổng serial nào.";
-        foreach (string p in GetPorts())
+        var errors = new List<string>();
+        foreach (string p in SerialPortDiscovery.Candidates(GetPorts(), excludedPorts))
         {
             try
             {
@@ -123,10 +125,11 @@ public sealed class ArduinoLink : IDisposable
                     error = "";
                     return true;
                 }
-                if (e.Length > 0) error = $"{p}: {e}";
+                if (e.Length > 0) errors.Add($"{p}: {e}");
             }
             catch { /* bỏ qua cổng đang bị chiếm */ }
         }
+        if (errors.Count > 0) error = string.Join(" | ", errors);
         return false;
     }
 

@@ -13,7 +13,7 @@ public sealed record HipotResult(double VoltageKv, double CurrentMa, double Time
 }
 
 /// <summary>
-/// Kết nối thật tới máy hipot GW Instek GPT-9800 series (GPT-9801...) qua RS-232.
+/// Kết nối GPT-9800 qua cổng COM (RS-232 hoặc USB giả lập cổng COM).
 ///
 /// Giao thức SCPI, kết thúc dòng bằng '\n'. Lệnh chính (trích từ Hipot_GPT9801.exe):
 ///   *IDN?                        -> "...GPT-9801..."
@@ -70,8 +70,8 @@ public sealed class HipotLink : IDisposable
                 DtrEnable = true,
                 RtsEnable = true
             };
-            port.Open();
             _port = port;
+            port.Open();
             _stop = false;
             _reader = new Thread(ReadLoop) { IsBackground = true, Name = $"hipot-{portName}" };
             _reader.Start();
@@ -82,7 +82,9 @@ public sealed class HipotLink : IDisposable
             Reply idn = Query("*IDN?", timeoutMs);
             if (!idn.Ok || idn.Raw.Length == 0)
             {
-                error = idn.Raw.Length == 0 ? $"Không có phản hồi *IDN? từ {portName}" : idn.Raw;
+                error = !idn.Ok && idn.Raw == "[timeout]" || idn.Raw.Length == 0
+                    ? $"Đã mở {portName} nhưng máy đo không trả lời *IDN?. Kiểm tra nguồn máy, giao tiếp USB/RS232 và tốc độ {baudRate} ({dataBits}{parity.ToString()[0]}{(stopBits == StopBits.Two ? 2 : 1)})."
+                    : idn.Raw;
                 Disconnect();
                 return false;
             }
@@ -109,11 +111,13 @@ public sealed class HipotLink : IDisposable
 
     /// <summary>Quét các cổng, trả về cổng đầu tiên có máy GPT-9800 trả lời *IDN?.</summary>
     public bool AutoConnect(int baudRate, Parity parity, int dataBits, StopBits stopBits,
-                            out string portName, out string error, int timeoutMs = 2500)
+                            out string portName, out string error, int timeoutMs = 2500,
+                            IEnumerable<string>? excludedPorts = null)
     {
         portName = "";
         error = "Không tìm thấy máy GPT-9800 trên cổng serial nào.";
-        foreach (string p in GetPorts())
+        var errors = new List<string>();
+        foreach (string p in SerialPortDiscovery.Candidates(GetPorts(), excludedPorts))
         {
             try
             {
@@ -123,10 +127,11 @@ public sealed class HipotLink : IDisposable
                     error = "";
                     return true;
                 }
-                if (e.Length > 0) error = $"{p}: {e}";
+                if (e.Length > 0) errors.Add($"{p}: {e}");
             }
             catch { /* cổng đang bị chiếm - bỏ qua */ }
         }
+        if (errors.Count > 0) error = string.Join(" | ", errors);
         return false;
     }
 
